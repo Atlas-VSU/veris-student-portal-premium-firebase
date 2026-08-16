@@ -35,13 +35,13 @@ fails at scale because **coupling increases**, **discoverability drops**, and **
 ```text
 src/
 ├── app/                            # Next.js App Router — routes ONLY, no logic
-│   ├── (admin)/                    # Protected: super-admin pages
-│   ├── (organization)/             # Protected: officer/org-admin pages
-│   │   ├── attendance/
-│   │   ├── members/
-│   │   ├── financials/
-│   │   ├── clearance/
-│   │   └── settings/
+│   ├── (student)/                  # Protected: authenticated student pages
+│   │   ├── fees/                   # View my fees & payment status
+│   │   ├── fines/                  # View my fines
+│   │   ├── clearance/              # View my clearance status
+│   │   ├── attendance/             # View my attendance records
+│   │   ├── events/                 # View upcoming events
+│   │   └── profile/               # View/edit my profile
 │   ├── (public)/                   # Public: /login, /
 │   └── api/
 │       ├── auth/session/           # POST → create session cookie
@@ -49,63 +49,79 @@ src/
 │
 ├── components/                     # Shared UI — owned by Frontend Lead
 │   ├── ui/                         # ShadCN primitives
-│   ├── layout/                     # Shell, Sidebar, Header, Footer
+│   ├── layout/                     # Shell, Header, Footer
 │   └── shared/                     # Cross-feature composed components (Rule of Three)
 │
 ├── features/                       # 🚀 THE CORE OF THE APP
 │   ├── auth/
-│   ├── members/
+│   ├── terms/              # Active term lookup — used by clearance and fees
 │   ├── events/
 │   ├── attendance/
 │   ├── fees/
 │   ├── fines/
 │   ├── clearance/
-│   ├── terms/
-│   ├── organizations/
-│   └── programs/
+│   └── profile/
+│
+├── types/                          # Shared TypeScript types (cross-feature)
+│   └── index.ts                    # ActionResult<T> and other shared types
 │
 └── lib/                            # Global server-side infrastructure
     └── firebase/
         ├── admin.ts                # Firebase Admin SDK — server-side ONLY
-        └── client.ts               # Firebase Client SDK — browser auth/UI
+        ├── client.ts               # Firebase Client SDK — browser auth/UI
+        └── with-auth.ts            # withAuth() HOF — handles auth cookie + error catch
 ```
 
 ### 2.2 Inside a Feature Module
 
 ```text
-features/events/
+features/clearance/
 ├── components/         # Feature-specific UI — owned by Frontend Lead
 ├── hooks/              # React Query hooks — owned by Frontend Lead
-├── actions.ts          # 'use server' — AAA-enforced entry point
-│   OR
-├── actions/            # Use a folder when the feature has 4+ distinct actions
-│   ├── create-event.ts
-│   └── update-event.ts
-├── services.ts         # Orchestration — no 'use server'; composes use cases
+├── actions.ts          # 'use server' — calls withAuth(); stays flat when < 4 actions
+├── services.ts         # Only present if there is real orchestration or business logic
 ├── usecases/           # One file per Firestore operation
-│   ├── get-events.usecase.ts
-│   ├── create-event.usecase.ts
-│   └── update-event-status.usecase.ts
-└── types.ts            # Types, role constants, hasPermission(), ActionResult
+│   ├── get-my-clearance.usecase.ts
+│   └── get-clearance-requirements.usecase.ts
+└── types.ts            # Feature-specific interfaces only — imports ActionResult from @/types
+```
+
+For a feature with **4+ actions** (e.g., `fees/`), graduate to a folder:
+
+```text
+features/fees/
+├── actions/            # folder form — used because fees/ has 4+ distinct actions
+│   ├── get-my-fees.ts
+│   ├── submit-fee.ts
+│   ├── upload-proof.ts
+│   └── get-payment-history.ts
+├── services.ts
+├── usecases/
+└── types.ts
 ```
 
 **`actions.ts` vs `actions/` folder:** Start with `actions.ts`. Upgrade to a folder only when the feature has **4 or more distinct actions** (e.g., `fees/`, `fines/`).
 
-**There are no controllers.** Pages import actions. Actions call services. Services call use cases. Nothing skips a layer.
+**There are no controllers.** Pages call actions. Actions call use cases directly, or through services when there is business logic to enforce. Pages never import use cases or services.
 
 ### 2.3 Request Flow
 
 ```
-app/(organization)/org-events/page.tsx
+app/(student)/fees/page.tsx
   │
-  └─▶ features/events/actions.ts          ← 'use server'; AAA inline
-          │   1. AUTH    — verify session cookie
-          │   2. AUTHZ   — hasPermission(role, PERMISSION)
-          │   3. EXEC    — call service
-          │   4. ACCT    — logAction() on every outcome
-          └─▶ features/events/services.ts  ← orchestration; no 'use server'
-                  └─▶ features/events/usecases/*.ts  ← Firestore (adminDb only)
+  └─▶ features/fees/actions/get-my-fees.ts   ← 'use server'
+          │
+          └─▶ withAuth('fees:list', async (userId) => {
+                  │   1. AUTH  — withAuth() verifies the session cookie
+                  │   2. AUTHZ — userId from verified cookie (ownership key)
+                  ├─▶ features/fees/usecases/get-my-fees.usecase.ts
+                  │       3. EXEC  — Firestore query filtered by studentId == userId
+                  └─▶ logAction(...)  (failures + mutations only)
+                          4. ACCT  — fire-and-forget; never blocks response
+              })
 ```
+
+> `withAuth` is not a layer in the call stack between the action and the use case. It is a wrapper that the action calls. The use case is called **from inside the action's callback**, not from inside `with-auth.ts`.
 
 ---
 
@@ -114,112 +130,164 @@ app/(organization)/org-events/page.tsx
 ### Actions — the only entry point
 
 - Marked `'use server'`.
-- Every **protected** action follows the **AAA template inline** inside a `try/catch`. No shared wrapper — the template is repeated intentionally so the security flow stays visible in every file.
-- Parse arguments, call the matching **service**, return `ActionResult`.
-- **Auth actions** (`createSessionAction`, `destroySessionAction`) **skip AAA** — the user is not yet authenticated.
+- Every **protected** action wraps its body in `withAuth()` from `lib/firebase/with-auth.ts`. Auth, cookie verification, and error catching are handled there — actions only write what's unique to them.
+- **Auth actions** (`createSessionAction`, `destroySessionAction`) **skip `withAuth`** — the user is not yet authenticated.
 - Never query Firestore directly. Never contain business logic.
 
 ### Services — orchestration
 
 - Plain TypeScript — no `'use server'`.
-- Compose use cases. Contain business rules (e.g., "an event cannot be created in the past").
+- Compose use cases. Contain business rules (e.g., "a student cannot submit a fee after the deadline").
 - Called only by actions.
 - Never query Firestore directly.
+
+> **Pragmatic exception:** if a feature's action has a single use case to call and zero business logic to enforce, the action may call the use case directly — skip the service. Add the service when you have rules to enforce or multiple use cases to compose. Don't create a pass-through service just for ceremony.
 
 ### Use Cases — single Firestore operation
 
 - One file = one operation. No exceptions.
 - The **only layer** that imports `adminDb` and queries Firestore.
-- Receive all context (orgId, accessLevel, etc.) as arguments — never re-fetch the current user inside a use case.
+- Receive all context as arguments — never re-fetch the current user inside a use case.
 - Never imported by pages or components.
 
-### Types — permissions live here, not in actions
+### Types — result shape and interfaces
 
-- Define `ActionResult<T>`, feature types, role permission constants, and `hasPermission()`.
-- The action calls `hasPermission(role, PERMISSION)` — the logic itself lives in `types.ts`.
+- Feature-specific interfaces only. `ActionResult<T>` lives in `src/types/index.ts` — import it from `@/types`, never re-define it per feature.
+- In the student portal there is no permission map — authorization is ownership-based (see §10).
 
 ---
 
-## 4. The AAA Template (copy into every protected action)
+## 4. The `withAuth` Wrapper
+
+All auth boilerplate lives in one place: `lib/firebase/with-auth.ts`. Actions call it instead of repeating the cookie check, session verification, and catch block in every file.
+
+### The wrapper itself
 
 ```typescript
-'use server'
-
+// lib/firebase/with-auth.ts
+import 'server-only'
 import { cookies } from 'next/headers'
-import { adminAuth, adminDb } from '@/lib/firebase/admin'
-import { logAction } from '../auth/usecases/log-action.usecase'
-import { getEventsService } from './services'
-import { hasPermission, EVENT_PERMISSION, type ActionResult, type Event } from './types'
+import { adminAuth } from '@/lib/firebase/admin'
+import { logAction } from '@/features/auth/usecases/log-action.usecase'
+import type { ActionResult } from '@/types'
 
-export async function getMyEventsAction(): Promise<ActionResult<Event[]>> {
-  const action = 'events:list'
-
+export async function withAuth<T>(
+  action: string,
+  fn: (userId: string) => Promise<ActionResult<T>>
+): Promise<ActionResult<T>> {
   try {
     // 1. AUTHENTICATION
     const sessionCookie = (await cookies()).get('__session')?.value
 
     if (!sessionCookie) {
-      await logAction({ userId: 'anonymous', action, success: false, error: 'Authentication required.' })
+      void logAction({ userId: 'anonymous', action, success: false, error: 'Authentication required.' })
       return { ok: false, error: 'Authentication required.' }
     }
 
     const claims = await adminAuth.verifySessionCookie(sessionCookie, true)
-    const userId = claims.uid
 
-    // 2. AUTHORIZATION
-    // In the student portal, authorization = ownership.
-    // Students can only read their own data — no role or access-level check needed.
-    // The userId extracted from the verified session is passed directly to the service.
-    // The use case filters by studentId == userId, making it impossible to read another student's data.
+    // 2. AUTHORIZATION (ownership)
+    // userId comes from the verified cookie — it cannot be spoofed by the client.
+    // Passes userId to the action's callback; use cases filter by studentId == userId.
 
-    // 3. EXECUTE
-    const events = await getMyEventsService({ userId })
-
-    // 4. ACCOUNTING
-    await logAction({ userId, action, success: true })
-
-    return { ok: true, data: events }
+    return await fn(claims.uid)
 
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unexpected error.'
-    await logAction({ userId: 'unknown', action, success: false, error: message })
+    void logAction({ userId: 'unknown', action, success: false, error: message })
     return { ok: false, error: message }
   }
 }
 ```
 
-### AAA Steps
+### Read action template
 
-| Step | Code | Purpose |
-|------|------|---------|
-| **Authentication** | `adminAuth.verifySessionCookie(...)` | Verify the HTTP-only session cookie; reject if missing or expired |
-| **Authorization** | Ownership check — `userId` from session | Students can only access their own data. Pass `userId` to the service; use cases filter by `studentId == userId`. No role or access-level check needed in the student portal. |
-| **Accounting** | `logAction({...})` | Audit log on **every** outcome — success, auth failure, authz failure, and catch |
+```typescript
+// features/fines/actions.ts
+'use server'
 
-> **Critical:** `logAction` must be called on every code path. A missing `logAction` call is a bug.
+import { withAuth } from '@/lib/firebase/with-auth'
+import { getMyFinesUseCase } from './usecases/get-my-fines.usecase'
+import type { ActionResult } from '@/types'
+import type { Fine } from './types'
+
+export async function getMyFinesAction(): Promise<ActionResult<Fine[]>> {
+  return withAuth('fines:list', async (userId) => {
+    const fines = await getMyFinesUseCase({ userId })
+    // ✅ READ: do NOT log success — high-volume noise, no audit value.
+    return { ok: true, data: fines }
+  })
+}
+```
+
+### Mutation (write) action template
+
+Always log success for writes — every data change must be auditable. Both read and write actions live in the same `actions.ts` (or `actions/` folder).
+
+```typescript
+// features/fees/actions/submit-fee.ts
+'use server'
+
+import { withAuth } from '@/lib/firebase/with-auth'
+import { logAction } from '@/features/auth/usecases/log-action.usecase'
+import { submitFeeUseCase } from '../usecases/submit-fee.usecase'
+import type { ActionResult } from '@/types'
+
+export async function submitFeeAction(feeId: string): Promise<ActionResult> {
+  return withAuth('fees:submit', async (userId) => {
+    await submitFeeUseCase({ userId, feeId })
+    // ✅ MUTATION: always log success — auditable data change.
+    void logAction({ userId, action: 'fees:submit', success: true })
+    return { ok: true, data: undefined }
+  })
+}
+```
+
+### AAA steps
+
+| Step | Where | Purpose |
+|------|-------|---------|
+| **Authentication** | `withAuth()` | Verify the HTTP-only session cookie; reject if missing or expired |
+| **Authorization** | `withAuth()` → `userId` arg | `userId` from the verified cookie is the ownership key; use cases filter by `studentId == userId` |
+| **Accounting** | Action callback | `void logAction(...)` — fire-and-forget; failures logged in `withAuth`, mutations logged in the action |
+
+> **`void` not `await`:** `logAction` is fire-and-forget. Never `await` it — a Firestore write should never block the student's response.
 
 ---
 
-## 5. Types File — Result Shape
+## 5. Types — Shared vs Feature-Specific
 
-Every feature's `types.ts` defines the `ActionResult` type and feature-specific interfaces.
+### Shared types — `src/types/index.ts`
 
-> **Note:** There is no `hasPermission` or role-permission map in this repo. The student portal uses **ownership authorization** — the `userId` from the verified session is the only check. If a future feature needs role-based authorization (e.g., a student cannot submit a fee after a deadline set by an admin), that logic belongs in the **service**, not as a permission system.
+`ActionResult<T>` is used by every feature's actions. It lives in `src/types/` (shared by Rule of Three — used everywhere immediately) and is never re-defined per feature.
 
 ```typescript
-// features/events/types.ts
+// src/types/index.ts
 
 export type ActionResult<T = void> =
   | { ok: true; data: T }
   | { ok: false; error: string }
+```
 
-export interface Event {
+### Feature types — `features/<name>/types.ts`
+
+Each feature's `types.ts` only contains interfaces specific to that feature. It imports `ActionResult` from `@/types`.
+
+> There is no `hasPermission` or role-permission map in this repo. The student portal uses **ownership authorization** — `userId` from the verified cookie is the only check. Business rules (e.g., fee submission after a deadline) belong in the **service**, not as a permission system.
+
+```typescript
+// features/clearance/types.ts
+
+import type { ActionResult } from '@/types'
+
+export type { ActionResult }  // re-export for convenience
+
+export interface ClearanceStatus {
   id: string
-  name: string
-  date: FirebaseFirestore.Timestamp
-  orgId: string
-  status: 'upcoming' | 'ongoing' | 'completed' | 'archived'
-  isDeleted: boolean
+  studentId: string
+  termId: string
+  status: 'pending' | 'approved' | 'rejected'
+  updatedAt: FirebaseFirestore.Timestamp
 }
 ```
 
@@ -227,19 +295,28 @@ export interface Event {
 
 ## 6. Services — Orchestration
 
-Services compose use cases. They contain business rules. They have no `'use server'`.
+Services compose use cases and enforce business rules. They have no `'use server'`. Only add a service when there is real logic — see the §3 pragmatic exception.
+
+**Example: clearance requires the active term** — the service fetches the term first, then queries the student's clearance for that specific term. Two use cases, composed here.
 
 ```typescript
-// features/events/services.ts
+// features/clearance/services.ts
 
-import { getMyEventsUseCase } from './usecases/get-my-events.usecase'
+import { getActiveTermUseCase } from '../terms/usecases/get-active-term.usecase'
+import { getMyClearanceUseCase } from './usecases/get-my-clearance.usecase'
+import type { ClearanceStatus } from './types'
 
-interface GetMyEventsInput {
+interface GetMyClearanceInput {
   userId: string
 }
 
-export async function getMyEventsService(input: GetMyEventsInput) {
-  return getMyEventsUseCase({ userId: input.userId })
+export async function getMyClearanceService(
+  input: GetMyClearanceInput
+): Promise<ClearanceStatus | null> {
+  const term = await getActiveTermUseCase()
+  if (!term) return null  // ← business rule: no active term = no clearance to show
+
+  return getMyClearanceUseCase({ userId: input.userId, termId: term.id })
 }
 ```
 
@@ -277,7 +354,23 @@ export async function getMyEventsUseCase(input: GetMyEventsInput): Promise<Event
 
 ## 8. Audit Logging Use Case
 
-`logAction` is itself a use case. It lives in `features/auth/usecases/log-action.usecase.ts` because it belongs to the auth/accounting domain and is imported by every other feature's actions.
+`logAction` is itself a use case at `features/auth/usecases/log-action.usecase.ts`.
+
+### Tiered logging strategy
+
+Not every action outcome is worth logging. Logging everything generates massive Firestore write volume (9,000 students × N page loads × N actions = enormous cost). Log selectively:
+
+| Outcome | Log? | Why |
+|---------|------|-----|
+| Auth failure (no session) | ✅ Always | Security signal — someone hit a protected endpoint without a session |
+| Authz failure (wrong role) | ✅ Always | Security signal — someone tried to do something they shouldn't |
+| Catch block (unexpected error) | ✅ Always | Operational signal — something broke |
+| Successful **mutation** (write) | ✅ Always | Audit trail — any data change must be recorded |
+| Successful **read** | ❌ Skip | High-volume noise, zero audit value, costs Firestore writes |
+
+### Always fire-and-forget
+
+Use `void logAction(...)` — never `await`. The response should not wait for an audit log write to Firestore.
 
 ```typescript
 // features/auth/usecases/log-action.usecase.ts
@@ -286,16 +379,21 @@ import { adminDb } from '@/lib/firebase/admin'
 
 export interface LogEntry {
   userId: string
-  action: string       // Format: 'feature:verb' e.g. 'events:list'
+  action: string    // Format: 'feature:verb' e.g. 'fees:submit'
   success: boolean
   error?: string
 }
 
 export async function logAction(entry: LogEntry): Promise<void> {
-  await adminDb.collection('audit_logs').add({
-    ...entry,
-    timestamp: Date.now(),
-  })
+  // Wrap in try/catch — a failed log write must never surface as a user-facing error
+  try {
+    await adminDb.collection('audit_logs').add({
+      ...entry,
+      timestamp: Date.now(),
+    })
+  } catch {
+    // Intentionally silent — logging failure is not a user concern
+  }
 }
 ```
 
@@ -303,7 +401,7 @@ export async function logAction(entry: LogEntry): Promise<void> {
 
 ## 9. Session Creation & Destruction
 
-Auth actions skip AAA — the user is not yet authenticated. They live in `features/auth/actions.ts`.
+Auth actions skip `withAuth` — the user is not yet authenticated. They live in `features/auth/actions.ts`.
 
 ```typescript
 // features/auth/actions.ts
@@ -364,10 +462,10 @@ In the student portal, authorization is **ownership-based**:
 
 | Check | Where | How |
 |-------|-------|-----|
-| Is the user logged in? | Action (step 1 — Authentication) | `adminAuth.verifySessionCookie(...)` |
-| Can the user access this data? | Use case (step 3 — Execute) | Filter query by `studentId == userId` from the verified session |
+| Is the user logged in? | `withAuth()` (Authentication) | `adminAuth.verifySessionCookie(sessionCookie, true)` |
+| Can the user access this data? | Use case (Execute step) | Every query filters by `studentId == userId` from the verified session |
 
-There is no `hasPermission`, no role map, and no `accessLevel` field to check. The student's `userId` (extracted from the verified cookie) is both the identity and the authorization key. Ownership is enforced structurally at the database query level — not as a conditional in application code.
+There is no `hasPermission`, no role map, and no `accessLevel` field to check. The `userId` extracted from the verified cookie is both the identity and the authorization key — it cannot be spoofed by the client. Ownership is enforced structurally at the database query level, not as an application-layer conditional.
 
 ---
 
@@ -429,21 +527,20 @@ MAINTENANCE_MODE=false
 
 | Collection | Document ID | Purpose |
 |---|---|---|
-| `users` | Firebase Auth UID | All member accounts (role, accessLevel, orgId…) |
-| `organizations` | Auto-generated | Student orgs — each user belongs to one |
-| `programs` | Auto-generated | Academic programs |
-| `faculties` | Auto-generated | Colleges / faculties |
-| `terms` | Auto-generated | Academic terms — exactly one `isActive=true` at a time |
-| `events` | Auto-generated | Events with status lifecycle |
-| `eventAttendees` | Auto-generated | Attendance records per event per student |
-| `feeItems` | Auto-generated | Fee templates per org/term |
-| `fees` | Auto-generated | Per-student fee submissions |
-| `fineTypes` | Auto-generated | Fine categories |
-| `fines` | Auto-generated | Per-student fine records |
-| `clearanceStatus` | Auto-generated | Per-student semester clearance |
-| `proofOfPayments` | Auto-generated | Payment images + verification status |
-| `paymentHistory` | Auto-generated | Verified payment history |
-| `audit_logs` | Auto-generated | Written by `logAction()` in every protected action |
+| `users` | Firebase Auth UID | Student's own profile (name, studentId, programId…) |
+| `terms` | Auto-generated | Academic terms — student needs the active term for clearance/fee context |
+| `events` | Auto-generated | Events the student can view |
+| `eventAttendees` | Auto-generated | Student's attendance records per event |
+| `feeItems` | Auto-generated | Fee templates — student reads these to see what fees apply to them |
+| `fees` | Auto-generated | Student's own fee submissions and payment status |
+| `fineTypes` | Auto-generated | Fine category labels — student reads for display |
+| `fines` | Auto-generated | Student's own fine records |
+| `clearanceStatus` | Auto-generated | Student's semester clearance status |
+| `proofOfPayments` | Auto-generated | Student's uploaded payment proof images |
+| `paymentHistory` | Auto-generated | Student's verified payment history |
+| `audit_logs` | Auto-generated | Written by `logAction()` on auth failures, errors, and mutations |
+
+> `organizations`, `programs`, and `faculties` are officer/admin concerns. The student portal never queries them directly.
 
 > See `.docs/coral-ussc backend doc.md §9` for the complete field-level schema.
 
@@ -454,11 +551,12 @@ MAINTENANCE_MODE=false
 | Item | Convention | Example |
 |------|-----------|---------|
 | Feature folders | `kebab-case` | `src/features/clearance/` |
-| Action files | `camelCase.ts` | `actions.ts` or `create-event.ts` |
-| Service files | `camelCase.ts` | `services.ts` |
-| Use case files | `kebab-case.usecase.ts` | `get-events.usecase.ts` |
-| Type files | `camelCase.ts` | `types.ts` |
-| Audit action strings | `feature:verb` | `'events:create'`, `'fines:list'` |
+| Action file (flat) | always `actions.ts` | `features/fees/actions.ts` |
+| Action files (folder) | `kebab-case.ts` | `get-my-fees.ts`, `submit-fee.ts` |
+| Service files | always `services.ts` | `features/clearance/services.ts` |
+| Use case files | `kebab-case.usecase.ts` | `get-my-clearance.usecase.ts` |
+| Type files | always `types.ts` | `features/clearance/types.ts` |
+| Audit action strings | `feature:verb` | `'fees:submit'`, `'fines:list'` |
 
 ---
 
@@ -468,22 +566,21 @@ MAINTENANCE_MODE=false
 
 | Rule | Violation | Correct |
 |------|-----------|---------|
-| Actions are the only entry point | Page imports from `usecases/` directly | Page calls action; action calls service |
+| Actions are the only entry point | Page imports from `usecases/` directly | Page calls action; action calls `withAuth()` |
 | Services have no `'use server'` | Adding `'use server'` to a service file | `'use server'` belongs in `actions.ts` only |
 | Use cases are single-responsibility | One use case queries two collections | Split into two files; compose in `services.ts` |
-| Use cases receive context, never re-fetch user | `adminDb.collection('users')...` inside a use case | Fetch user in the action; pass `orgId`, `accessLevel` as args |
-| `adminDb` is server-only | Importing `admin.ts` in a Client Component | Import only in `'use server'` files |
-| Auth actions skip AAA | Adding auth check to `createSessionAction` | Auth actions authenticate the user; they cannot check an existing session |
+| Use cases receive `userId`, never re-fetch the user | Calling `adminDb.collection('users')...` inside a use case | Receive `userId` as an argument from the action |
+| `adminDb` is server-only | Importing `admin.ts` in a Client Component | Import only in server-side files |
+| Auth actions skip `withAuth` | Adding a session check to `createSessionAction` | Auth actions authenticate the user; there is no existing session to verify |
 | Never throw from an action | `throw new Error(...)` in `actions.ts` | Return `{ ok: false, error: message }` |
 
 ### Security Rules
 
 | Rule |
 |------|
-| `logAction` must be called on **every** code path — success, auth failure, authz failure, and catch |
+| Log auth failures, unexpected errors, and all mutations. Skip successful reads — see §8 for the tiered strategy. |
 | Never physically delete a Firestore document from the UI — set `isDeleted = true` |
-| Never pass `organization_id` from the client as a query param — extract it from the verified session |
-| Never disable or skip access-level filtering on user-scoped list queries |
+| Never trust client-supplied IDs for scoping — always extract `userId` from the verified session in `withAuth()` |
 | `actions.ts` vs `actions/` — use a flat file until 4+ actions; then graduate to a folder |
 
 ### Shared Code — Rule of Three
@@ -514,6 +611,7 @@ You add `'use cache'` to **read use cases only**. Never to actions, services, or
 
 ```typescript
 // features/fees/usecases/get-my-fees.usecase.ts
+import { adminDb } from '@/lib/firebase/admin'
 import { cacheTag, cacheLife } from 'next/cache'
 
 export async function getMyFeesUseCase({ userId }: { userId: string }) {
@@ -528,6 +626,8 @@ export async function getMyFeesUseCase({ userId }: { userId: string }) {
   return snapshot.docs.map(d => ({ id: d.id, ...d.data() }))
 }
 ```
+
+> **Why `adminDb` works here:** `'use cache'` only requires the function's *parameters* to be serializable (they form the cache key). `adminDb` is a module-level import — not a parameter — so it does not affect serialization. Do **not** refactor use cases to receive `adminDb` as a parameter; keep it as a module import.
 
 ### Throwing away the saved copy after a mutation
 
