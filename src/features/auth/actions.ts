@@ -13,7 +13,7 @@ export async function createSessionAction(idToken : string) {
         cookieStore.set('__session', sessionCookie, {
             maxAge : SESSION_DURATION_MS / 1000,
             httpOnly : true,
-            secure : process.env.NODE_ENV === 'production',
+            secure : process.env.NEXT_PUBLIC_NODE_ENV === 'production',
             sameSite : 'strict',
             path : '/'
         })
