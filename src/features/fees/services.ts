@@ -1,6 +1,5 @@
 import type { StudentFee, FeeStatus } from './types'
 
-// Fee domain business rules and balance calculation
 export function calculateFeeBalance(amount: number, paidAmount: number): { balance: number; status: FeeStatus } {
   const balance = Math.max(0, amount - paidAmount)
   let status: FeeStatus = 'unpaid'

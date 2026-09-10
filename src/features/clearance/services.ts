@@ -1,6 +1,5 @@
 import type { BlockingItem, ClearanceState } from './types'
 
-// Clearance state machine resolution
 export function evaluateClearanceState(blockingItems: Record<string, BlockingItem>): ClearanceState {
   const items = Object.values(blockingItems || {})
   const hasUnpaidRequired = items.some(

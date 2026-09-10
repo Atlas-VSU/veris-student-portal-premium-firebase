@@ -1,6 +1,5 @@
 import type { FineStatus } from './types'
 
-// Fines domain business rules
 export function calculateFineBalance(
   accumulated: number,
   paid: number,
