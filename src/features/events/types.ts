@@ -23,10 +23,19 @@ export interface Event {
   semester: string
   finesGenerated?: boolean
   manuallyCompleted?: boolean
-  timeInStart?: string // 'HH:MM'
+  timeInStart?: string
   timeInEnd?: string
   timeOutStart?: string
   timeOutEnd?: string
   isDeleted: boolean
   createdAt?: Timestamp
+}
+
+export interface EventSummary {
+  id: string
+  name: string
+  date: Timestamp
+  location: string
+  majorEvent: boolean
+  status: EventStatus
 }
