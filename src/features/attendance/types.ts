@@ -24,3 +24,23 @@ export interface AttendanceRecord {
   remark?: string
   orgId: string
 }
+
+export interface AttendanceHistoryItem {
+  id: string
+  eventId: string
+  eventName: string
+  eventDate?: Timestamp
+  location?: string
+  majorEvent: boolean
+  timeIn?: Timestamp
+  timeOut?: Timestamp
+  status: AttendanceStatus
+  remark?: string
+}
+
+export interface AttendanceStats {
+  presentCount: number
+  partialCount: number
+  totalAttended: number
+  absencesCount: number
+}
