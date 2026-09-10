@@ -1,0 +1,22 @@
+Features,Modules,Description,Assignee,Status
+Dashboard,Active Term Header,Shows current semester and A.Y.	,,
+,Student Greeting,"Student name, program, year level	",,
+,Events Summary Card,Count of events attended this semester	,,
+,Fees Summary Card,Total unpaid fees amount (₱)	,,
+,Fines Summary Card,Total unpaid fines amount (₱)	,,
+,Clearance Summary Card,Current clearance status (Cleared / Not Cleared)	,,
+,Clearance Requirements Widget,"Shows each requirement (Fees, Fines) and status	",,
+,Event Attendance Widget,Last 2–3 attendance records with status	,,
+Events,Attendance Stats,Attended / Absences / Excused counts	,,
+,Attendance History List,"Full list of events with name, date, venue, status	",,
+Fees,Fee List,"All fees for current semester — name, type, amount, status	",,
+,Unpaid Fee Redirect,"""Head to Clearance page"" message on unpaid items	",,
+Fines,Fines Summary Stats,"Outstanding balance, Cleared/Waived, Total items	",,
+,Fine History Table,"Full list — fine name, amount, date issued, status, appeal	",,
+,Appeal Fine,Submit an appeal for a specific fine	,,
+Clearance,Clearance Status,"NOT CLEARED / CLEARED, progress bar, requirements count	",,
+,Requirements List,Fees and Fines status (Cleared / Not Cleared)	,,
+,Make Payment Button,Opens payment submission flow (N items)	,,
+Cross-Page,Auth Login,"Google/email sign-in, creates session cookie	",Xyryll,In Progress
+,Auth Sign Out,"Destroys session cookie, revokes tokens	",Xyryll,In Progress
+,NavBar,"Active tab highlighting, student avatar, sign out	",,
