@@ -1,13 +1,12 @@
 'use server';
-import { cookies } from "next/headers";
-import { adminAuth } from "@/app/lib/firebase/admin";
-import type { ActionResult } from "@/app/types";
-import { createSessionUsecase } from "./usecases/create-session-cookie.usecase";
-import { destroySessionUsecase } from "./usecases/revoke-session-cookie.usecase";
-export const createSessionAction = async (idToken : string) => {
-    return await createSessionUsecase(idToken);
+import { signInUsecase } from "./usecases/sign-in.usecase";
+import { signOutUsecase } from "./usecases/sign-out.usecase";
+
+export const signIn = async (email : string, password : string) => {
+    return await signInUsecase(email, password);
 }
 
-export const destroySessionAction = async () => {
-    return await destroySessionUsecase();
+export const signOut = async () => {
+    const response = await signOutUsecase();
+    return response
 }
