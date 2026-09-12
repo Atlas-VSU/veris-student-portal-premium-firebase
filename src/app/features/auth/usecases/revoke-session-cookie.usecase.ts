@@ -1,4 +1,4 @@
-import { adminAuth } from "@/app/lib/firebase/admin";
+import { adminAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
 export const destroySessionUsecase = async () => {
     const cookieStore = await cookies()

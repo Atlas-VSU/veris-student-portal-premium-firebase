@@ -1,4 +1,4 @@
-import { adminAuth } from "@/app/lib/firebase/admin";
+import { adminAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
 const SESSION_DURATION_MS = 60 * 60 * 24 * 14 * 1000;
 
