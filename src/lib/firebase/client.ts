@@ -1,7 +1,6 @@
 import { initializeApp, getApps, getApp } from 'firebase/app'
 import { getAuth } from 'firebase/auth'
-import { getFirestore } from 'firebase/firestore'
-import { getStorage } from 'firebase/storage'
+import { initializeAppCheck, ReCaptchaV3Provider, type AppCheck } from 'firebase/app-check'
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -15,5 +14,31 @@ const firebaseConfig = {
 
 export const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp()
 export const auth = getAuth(app)
-export const db = getFirestore(app)
-export const storage = getStorage(app)
+
+// Initialize Firebase App Check on the client
+let appCheck: AppCheck | undefined = undefined
+
+if (typeof window !== 'undefined') {
+  // Set debug token for local development if provided
+  const debugToken = process.env.NEXT_PUBLIC_APPCHECK_DEBUG_TOKEN
+  if (debugToken) {
+    // @ts-expect-error FIREBASE_APPCHECK_DEBUG_TOKEN is read by Firebase App Check SDK
+    self.FIREBASE_APPCHECK_DEBUG_TOKEN = debugToken === 'true' ? true : debugToken
+  }
+
+  const recaptchaSiteKey = process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY
+  if (recaptchaSiteKey) {
+    try {
+      appCheck = initializeAppCheck(app, {
+        provider: new ReCaptchaV3Provider(recaptchaSiteKey),
+        isTokenAutoRefreshEnabled: true,
+      })
+    } catch {
+      // Avoid duplicate initialization errors during hot module reloads
+    }
+  }
+}
+
+export { appCheck }
+
+

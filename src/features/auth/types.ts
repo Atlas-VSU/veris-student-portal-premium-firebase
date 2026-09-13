@@ -23,4 +23,25 @@ export interface SessionUser {
   lastName?: string
   studentId?: string
   role: 'user' | 'admin' | 'super-admin'
+  programId?: string
+  facultyId?: string
+  orgId?: string
+  yearLevel?: number
+  status?: 'pending' | 'approved'
+  corURL?: string
 }
+
+export interface LoginCredentials {
+  email: string
+  password: string
+}
+
+export interface AuthContextValue {
+  user: SessionUser | null
+  loading: boolean
+  isAuthenticated: boolean
+  signIn: (credentials: LoginCredentials) => Promise<ActionResult>
+  signOut: () => Promise<void>
+  refreshUser: () => Promise<void>
+}
+
