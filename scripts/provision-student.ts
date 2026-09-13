@@ -27,9 +27,8 @@ async function provisionStudent() {
   console.log(`Name:       ${displayName}`)
 
   // 1. Check if an Auth user already exists with this email or UID
-  let authUser = null
   try {
-    authUser = await auth.getUser(studentUid)
+    await auth.getUser(studentUid)
     console.log(`✓ Auth user found by UID ${studentUid}. Updating credentials...`)
     await auth.updateUser(studentUid, {
       email,
@@ -38,8 +37,8 @@ async function provisionStudent() {
       emailVerified: true,
       disabled: false,
     })
-  } catch (err: any) {
-    if (err.code === 'auth/user-not-found') {
+  } catch (err: unknown) {
+    if ((err as { code?: string }).code === 'auth/user-not-found') {
       // Check if user exists by email under a different UID
       try {
         const userByEmail = await auth.getUserByEmail(email)
@@ -48,7 +47,7 @@ async function provisionStudent() {
       } catch {}
 
       console.log(`+ Creating new Auth user with exact UID ${studentUid}...`)
-      authUser = await auth.createUser({
+      await auth.createUser({
         uid: studentUid,
         email,
         password,
