@@ -1,5 +1,4 @@
 import type { ActionResult } from '@/types'
-import type { Timestamp } from 'firebase-admin/firestore'
 
 export type { ActionResult }
 
@@ -12,8 +11,8 @@ export interface Term {
   isActive: boolean
   isDeleted: boolean
   metadata?: {
-    createdAt: Timestamp
-    updatedAt: Timestamp
+    createdAt?: string | null
+    updatedAt?: string | null
   }
 }
 
@@ -21,4 +20,3 @@ export interface TermFilter {
   academicYear?: string
   semester?: AcademicSemester | string
 }
-

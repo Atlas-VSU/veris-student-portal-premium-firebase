@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Navbar } from "@/components/layout/navbar";
+import { ActiveTermBanner } from "@/features/terms/components/active-term-banner";
 
 export default function HomePage() {
   return (
@@ -7,10 +8,7 @@ export default function HomePage() {
       <Navbar />
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-10">
         <div className="max-w-3xl space-y-6">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 text-xs font-medium">
-            <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
-            Active Academic Term: 2025-2026 • 1st Semester
-          </div>
+          <ActiveTermBanner />
 
           <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-white">
             Welcome to the VERIS Student Portal

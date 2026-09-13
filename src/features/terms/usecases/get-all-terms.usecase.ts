@@ -1,4 +1,5 @@
 import { adminDb } from '@/lib/firebase/admin'
+import { toIsoString } from '@/lib/date-format'
 import type { Term } from '../types'
 
 export async function getAllTermsUseCase(): Promise<Term[]> {
@@ -15,7 +16,12 @@ export async function getAllTermsUseCase(): Promise<Term[]> {
       semester: data.semester,
       isActive: data.isActive ?? false,
       isDeleted: data.isDeleted ?? false,
-      metadata: data.metadata,
+      metadata: data.metadata
+        ? {
+            createdAt: toIsoString(data.metadata.createdAt),
+            updatedAt: toIsoString(data.metadata.updatedAt),
+          }
+        : undefined,
     }
   })
 
