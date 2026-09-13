@@ -7,6 +7,7 @@ import type {
   AttendanceStatus,
   AttendanceHistoryItem,
   AttendanceStats,
+  TermFilter,
 } from './types'
 
 export function resolveAttendanceStatus(record: Partial<AttendanceRecord>): AttendanceStatus {
@@ -41,9 +42,36 @@ async function enrichAttendanceRecords(records: AttendanceRecord[]): Promise<Att
   })
 }
 
-export async function getMyAttendanceHistoryService(userId: string): Promise<AttendanceHistoryItem[]> {
+export async function getMyAttendanceHistoryService(
+  userId: string,
+  filter?: TermFilter
+): Promise<AttendanceHistoryItem[]> {
   const records = await getMyAttendanceUseCase({ userId })
-  return enrichAttendanceRecords(records)
+  const enriched = await enrichAttendanceRecords(records)
+
+  if (filter?.academicYear || filter?.semester) {
+    const eventCache = new Map<string, { academicYear?: string; semester?: string } | null>()
+    const filtered: AttendanceHistoryItem[] = []
+
+    for (const item of enriched) {
+      let event = eventCache.get(item.eventId)
+      if (event === undefined) {
+        const fetched = await getEventByIdUseCase({ eventId: item.eventId })
+        event = fetched ? { academicYear: fetched.academicYear, semester: fetched.semester } : null
+        eventCache.set(item.eventId, event)
+      }
+
+      if (!event) continue
+      if (filter.academicYear && event.academicYear !== filter.academicYear) continue
+      if (filter.semester && event.semester !== filter.semester) continue
+
+      filtered.push(item)
+    }
+
+    return filtered
+  }
+
+  return enriched
 }
 
 export async function getRecentAttendanceService(
@@ -54,6 +82,14 @@ export async function getRecentAttendanceService(
   return enrichAttendanceRecords(records)
 }
 
-export async function getMyAttendanceStatsService(userId: string): Promise<AttendanceStats> {
-  return getAttendanceStatsUseCase({ userId })
+export async function getMyAttendanceStatsService(
+  userId: string,
+  filter?: TermFilter
+): Promise<AttendanceStats> {
+  return getAttendanceStatsUseCase({
+    userId,
+    academicYear: filter?.academicYear,
+    semester: filter?.semester,
+  })
 }
+
