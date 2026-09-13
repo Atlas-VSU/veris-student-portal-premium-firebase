@@ -16,10 +16,12 @@ This Functional Requirements Specification (FRS) establishes the authoritative t
 > The student portal features a **built-in payment portal housed directly on the Clearance page (`/clearance`)**. Unpaid fee and fine callouts across the portal (such as on `/fees` and the Dashboard) redirect students internally to `/clearance` to select items and submit payments for verification.
 
 > [!NOTE]
-> ### 🏢 Organization Operational Capability Levels (Access Levels 1, 2, and 3)
-> In the VERIS ecosystem, an organization's **Access Level (1, 2, or 3)** defines its overall operational capability within the system:
-> - **Events & Attendance Views (`/events`, `/attendance`)**: Encompass records from **all organizations (Access Levels 1 to 3)** the student is affiliated with.
-> - **Fees, Fines, and Clearance Views (`/fees`, `/fines`, `/clearance`)**: Encompass records from **Access Levels 2 and 3 ONLY** (since Level 1 organizations do not have payment-related or financial operations).
+> ### 🏢 Population Scope (`accessLevel`) vs Organization Capabilities (Subscription Tiers)
+> In the VERIS ecosystem, **Population Scope** and **Operational Capabilities** are strictly decoupled:
+> - **Population Scope (`accessLevel: 1 | 2 | 3`)**: Controls the institutional audience reach in backend queries (`1`: Program-specific, `2`: Faculty/College-specific, `3`: University-wide / Apex). In the UI, students see their affiliated organizations naturally by name without artificial level badges.
+> - **Subscription Tiers (`basic` | `plus` | `premium`)**: Define what functional modules an organization is enabled to operate:
+>   - **Events & Attendance Views (`/events`, `/attendance`)**: Encompass records from organizations across all subscription tiers (**Basic, Plus, and Premium**), filtered by the student's population scope.
+>   - **Fees, Fines, and Clearance Views (`/fees`, `/fines`, `/clearance`)**: Encompass records from **Plus and Premium tier organizations ONLY** (since Basic tier organizations do not operate financial or clearance modules). Any organization at any institutional scope (Program, College, or University) with Plus or Premium tier can assess fees, issue fines, and manage clearance.
 
 > [!NOTE]
 > ### 🎨 UI/UX Governance & Frontend Discretion Notice
@@ -37,22 +39,22 @@ This Functional Requirements Specification (FRS) establishes the authoritative t
 | **Cross-Page** | Term Selector | **FR-TERM-01** | Global / Page-Level Term & Semester Selector (Defaults to Active Term) |
 | **Dashboard** | Active Term Header | **FR-DASH-01** | Current Academic Term Banner Resolution |
 | **Dashboard** | Student Greeting | **FR-DASH-02** | Personalized Identity & Academic Profile Header |
-| **Dashboard** | Events Summary Card | **FR-DASH-03** | Semester Events Attended Counter (Levels 1–3, Term-Scoped) |
-| **Dashboard** | Fees Summary Card | **FR-DASH-04** | Total Outstanding Fee Balance Metric (₱) (Levels 2–3, Term-Scoped) |
-| **Dashboard** | Fines Summary Card | **FR-DASH-05** | Total Outstanding Fine Balance Metric (₱) (Levels 2–3, Term-Scoped) |
-| **Dashboard** | Clearance Summary Card | **FR-DASH-06** | Clearance Status Badge Indicator (Levels 2–3, Term-Scoped) |
+| **Dashboard** | Events Summary Card | **FR-DASH-03** | Semester Events Attended Counter (Basic, Plus, Premium Orgs, Term-Scoped) |
+| **Dashboard** | Fees Summary Card | **FR-DASH-04** | Total Outstanding Fee Balance Metric (₱) (Plus & Premium Orgs, Term-Scoped) |
+| **Dashboard** | Fines Summary Card | **FR-DASH-05** | Total Outstanding Fine Balance Metric (₱) (Plus & Premium Orgs, Term-Scoped) |
+| **Dashboard** | Clearance Summary Card | **FR-DASH-06** | Clearance Status Badge Indicator (Plus & Premium Orgs, Term-Scoped) |
 | **Dashboard** | Clearance Requirements Widget | **FR-DASH-07** | Blocking Items Snapshot with Direct Redirect to `/clearance` |
-| **Dashboard** | Event Attendance Widget | **FR-DASH-08** | Recent 2–3 Attendance Records Mini-Feed (Levels 1–3) |
-| **Events** | Attendance Stats | **FR-EVT-01** | Aggregate Attendance Counters (Levels 1–3) with Term Filter |
-| **Events** | Attendance History List | **FR-EVT-02** | Chronological Event Attendance History Ledger (Levels 1–3) with Term Lookup |
-| **Events** | Events Catalog | **FR-EVT-03** | View Active & Historical Events by Term across Levels 1–3 |
-| **Fees** | Fee List | **FR-FEE-01** | Term Assessed Fee Ledger across Levels 2–3 (Active Term default & Term Lookup) |
+| **Dashboard** | Event Attendance Widget | **FR-DASH-08** | Recent 2–3 Attendance Records Mini-Feed (Basic, Plus, Premium Orgs) |
+| **Events** | Attendance Stats | **FR-EVT-01** | Aggregate Attendance Counters (Basic, Plus, Premium Orgs) with Term Filter |
+| **Events** | Attendance History List | **FR-EVT-02** | Chronological Event Attendance History Ledger (Basic, Plus, Premium Orgs) with Term Lookup |
+| **Events** | Events Catalog | **FR-EVT-03** | View Active & Historical Events by Term across Affiliated Orgs (Program, College, University) |
+| **Fees** | Fee List | **FR-FEE-01** | Term Assessed Fee Ledger across Plus & Premium Orgs (Active Term default & Term Lookup) |
 | **Fees** | Unpaid Fee Clearance Redirect | **FR-FEE-02** | Call-to-Action Link Redirecting to Built-In Payment Portal on `/clearance` |
-| **Fines** | Fines Summary Stats | **FR-FINE-01** | Fine Balance KPIs across Levels 2–3 with Term Filter |
-| **Fines** | Fine History Table | **FR-FINE-02** | Itemized Infraction & Fine Items Ledger (Levels 2–3) with Term Lookup |
+| **Fines** | Fines Summary Stats | **FR-FINE-01** | Fine Balance KPIs across Plus & Premium Orgs with Term Filter |
+| **Fines** | Fine History Table | **FR-FINE-02** | Itemized Infraction & Fine Items Ledger (Plus & Premium Orgs) with Term Lookup |
 | **Fines** | Appeal Fine | **FR-FINE-03** | Fine Infraction Appeal Submission Modal |
-| **Clearance** | Clearance Status | **FR-CLR-01** | Official Clearance Status Banner & Progress across Levels 2–3 with Term Switcher |
-| **Clearance** | Requirements List | **FR-CLR-02** | Categorized Clearance Checklist (Fees & Fines Blockers from Levels 2–3) |
+| **Clearance** | Clearance Status | **FR-CLR-01** | Official Clearance Status Banner & Progress across Plus & Premium Orgs with Term Switcher |
+| **Clearance** | Requirements List | **FR-CLR-02** | Categorized Clearance Checklist (Fees & Fines Blockers from Plus & Premium Orgs) |
 | **Clearance** | Built-In Payment Portal | **FR-CLR-03** | Multi-Item Payment Submission & Proof Upload Workflow |
 
 ---
@@ -148,42 +150,42 @@ This Functional Requirements Specification (FRS) establishes the authoritative t
 * **Description:** Displays student full name, program, and year level from `users/{userId}`.
 
 ### FR-DASH-03..06: Quick Metric Summary Cards
-* **FR-DASH-03 (Events Count):** Total count of events marked `status == "present"` or `"partially present"` in `eventAttendees` for the active term across **Levels 1 to 3**.
-* **FR-DASH-04 (Fees Outstanding):** Sum of `balance` across non-archived `fees` documents for the student in the active term across **Levels 2 and 3**.
-* **FR-DASH-05 (Fines Outstanding):** Sum of `balance` from student's parent `fines` documents for the active term across **Levels 2 and 3**.
-* **FR-DASH-06 (Clearance Status Card):** Visual status badge (`CLEARED` / `NOT CLEARED` / `PENDING REVIEW`) derived from `clearanceStatus` documents across **Levels 2 and 3**.
+* **FR-DASH-03 (Events Count):** Total count of events marked `status == "present"` or `"partially present"` in `eventAttendees` for the active term across affiliated organizations (Basic, Plus, and Premium tiers).
+* **FR-DASH-04 (Fees Outstanding):** Sum of `balance` across non-archived `fees` documents for the student in the active term across affiliated **Plus and Premium tier** organizations.
+* **FR-DASH-05 (Fines Outstanding):** Sum of `balance` from student's parent `fines` documents for the active term across affiliated **Plus and Premium tier** organizations.
+* **FR-DASH-06 (Clearance Status Card):** Visual status badge (`CLEARED` / `NOT CLEARED` / `PENDING REVIEW`) derived from `clearanceStatus` documents across affiliated **Plus and Premium tier** organizations.
 
 ### FR-DASH-07: Clearance Requirements Widget
 * **Description:** Previews unresolved blocking items from `clearanceStatus.blockingItems`. Includes a direct CTA button *"Resolve in Clearance"* navigating to `/clearance`.
 
 ### FR-DASH-08: Event Attendance Widget
-* **Description:** Displays the 2–3 most recent attendance records sorted by `timeIn desc` across all Level 1–3 organizations.
+* **Description:** Displays the 2–3 most recent attendance records sorted by `timeIn desc` across all affiliated organizations (Basic, Plus, and Premium).
 
 ---
 
-## 5. Module 3: Events & Attendance Ledger (Access Levels 1–3)
+## 5. Module 3: Events & Attendance Ledger
 
 ### FR-EVT-01: Attendance Aggregate Statistics (Multi-Term Capable)
-* **Description:** Computes participation statistics across all affiliated organizations (Access Levels 1, 2, and 3), with support for term filtering.
+* **Description:** Computes participation statistics across all affiliated organizations (Basic, Plus, and Premium tiers), with support for term filtering.
 * **Metrics Displayed:**
   - **Total Events Attended**: Attendance records with `status == "present"`.
   - **Partial Attendance**: Attendance records with `status == "partially present"`.
-  - **Infractions / Absences**: Fine items in `fines/{fineId}/fineItems` tied to non-attendance (from L2 & L3 orgs).
+  - **Infractions / Absences**: Fine items in `fines/{fineId}/fineItems` tied to non-attendance (from Plus & Premium orgs).
 
 ---
 
 ### FR-EVT-02: Event Attendance History Ledger (Multi-Term Capable)
-* **Description:** Chronological tabular view of student attendance records across Access Levels 1 to 3, filterable by Term or viewable in full history.
-* **Columns:** Event Name, Event Date, Venue, Time-In, Time-Out, Status (`Present` | `Partially Present`), Remarks.
+* **Description:** Unified chronological tabular ledger of student attendance participation across affiliated organizations, filterable by Term or viewable in full history. Merges verified check-in records (`eventAttendees`) and itemized absence infractions (`fines/{fineId}/fineItems`).
+* **Columns:** Organizing Organization (`orgName`), Event Name (with Major Event indicator), Event Date, Venue, Time-In, Time-Out, Status (`Present` | `Partially Present` | `Absent`), Remarks / Infraction Details (with fine amount & appeal status).
 
 ---
 
-### FR-EVT-03: Events Catalog (Active & Historical, Levels 1–3)
-* **Description:** Allows students to view events scheduled for the active term or browse past events by selecting previous terms, covering Level 1 (Program), Level 2 (College), and Level 3 (Apex) organizations.
+### FR-EVT-03: Events Catalog (Active & Historical)
+* **Description:** Allows students to view events scheduled for the active term or browse past events by selecting previous terms. Scopes visible events by the student's academic affiliation (Level 1: Enrolled Program, Level 2: Enrolled Faculty/College, Level 3: University/Apex) and resolves host organization names (`orgName`).
 
 ---
 
-## 6. Module 4: Fees Management (Access Levels 2–3)
+## 6. Module 4: Fees Management (Plus & Premium Tiers)
 
 ```
 ┌────────────────────────────────────────────────────────────────────────────┐
@@ -191,15 +193,15 @@ This Functional Requirements Specification (FRS) establishes the authoritative t
 ├────────────────────────────────────────────────────────────────────────────┤
 │ Organization          Item               Due Date     Amount    Status     │
 │ ────────────────────────────────────────────────────────────────────────── │
-│ CET Council (L2)      Org Membership Fee Oct 15, 2025 ₱ 250.00  UNPAID ⚠️  │
-│ USSC Apex (L3)        University Fee     Nov 01, 2025 ₱ 100.00  PAID ✅    │
+│ CET Council           Org Membership Fee Oct 15, 2025 ₱ 250.00  UNPAID ⚠️  │
+│ USSC Apex             University Fee     Nov 01, 2025 ₱ 100.00  PAID ✅    │
 ├────────────────────────────────────────────────────────────────────────────┤
 │ ⚠️ You have 1 unpaid fee obligation. [ Pay in Clearance ──► /clearance ]   │
 └────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### FR-FEE-01: Semester Fee Ledger (Active & Historical Term Lookup, Levels 2–3)
-* **Description:** Displays assessed student fees issued by Level 2 (Plus) and Level 3 (Premium) organizations for the selected term (defaulting to active term).
+### FR-FEE-01: Semester Fee Ledger (Active & Historical Term Lookup)
+* **Description:** Displays assessed student fees issued by affiliated **Plus and Premium tier** organizations for the selected term (defaulting to active term).
 * **Data Fields:** `organizationName`, `title`, `feeType`, `dueDate`, `amount`, `paidAmount`, `balance`, `status` (`PAID` | `PARTIAL` | `UNPAID` | `PENDING REVIEW`).
 
 ---
@@ -209,7 +211,7 @@ This Functional Requirements Specification (FRS) establishes the authoritative t
 
 ---
 
-## 7. Module 5: Fines & Infractions Ledger (Access Levels 2–3)
+## 7. Module 5: Fines & Infractions Ledger (Plus & Premium Tiers)
 
 ```
 ┌────────────────────────────────────────────────────────────────────────────┐
@@ -223,13 +225,13 @@ This Functional Requirements Specification (FRS) establishes the authoritative t
 └────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### FR-FINE-01: Fine Summary & Financial KPIs (Levels 2–3, Multi-Term Capable)
-* **Description:** Aggregates fine totals for the selected term across all affiliated Level 2 and Level 3 organizations (`accumulatedAmount`, `waivedAmount`, `paidAmount`, `balance`).
+### FR-FINE-01: Fine Summary & Financial KPIs (Plus & Premium Tiers, Multi-Term Capable)
+* **Description:** Aggregates fine totals for the selected term across all affiliated Plus and Premium tier organizations (`accumulatedAmount`, `waivedAmount`, `paidAmount`, `balance`).
 
 ---
 
-### FR-FINE-02: Itemized Fine Infraction History Table (Levels 2–3, Multi-Term Capable)
-* **Description:** Lists individual fine records from `fines/{fineId}/fineItems` for the selected term across Level 2 and Level 3 organizations.
+### FR-FINE-02: Itemized Fine Infraction History Table (Plus & Premium Tiers, Multi-Term Capable)
+* **Description:** Lists individual fine records from `fines/{fineId}/fineItems` for the selected term across affiliated Plus and Premium tier organizations.
 
 ---
 
@@ -238,7 +240,7 @@ This Functional Requirements Specification (FRS) establishes the authoritative t
 
 ---
 
-## 8. Module 6: Semester Clearance & Built-In Payment Portal (Access Levels 2–3)
+## 8. Module 6: Semester Clearance & Built-In Payment Portal (Plus & Premium Tiers)
 
 > [!IMPORTANT]
 > ### 🏛️ Per-Organization Independent Payment Submission Rule
@@ -252,19 +254,19 @@ This Functional Requirements Specification (FRS) establishes the authoritative t
 ├────────────────────────────────────────────────────────────────────────────┤
 │ Clearance Checklist by Organization:                                       │
 │                                                                            │
-│ 🏛️ College Organization (CET Student Council - Level 2)   [ NOT CLEARED ❌]│
+│ 🏛️ College Organization (CET Student Council)              [ NOT CLEARED ❌]│
 │    • Org Membership Fee: ₱ 250.00 [ UNPAID ❌ ]                            │
 │    • General Assembly Absence: ₱ 100.00 [ UNPAID ❌ ]                      │
 │    [ 💳 Pay CET Council Obligations (₱ 350.00) ──► Opens Org Payment Flow ]│
 │                                                                            │
-│ 👑 University Central Body (USSC Apex - Level 3)           [ CLEARED ✅ ]  │
+│ 👑 University Central Body (USSC Apex)                     [ CLEARED ✅ ]  │
 │    • University Clearance Fee: ₱ 100.00 [ PAID ✅ ]                        │
 │    (No outstanding obligations for USSC)                                   │
 └────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### FR-CLR-01: Official Clearance Status Indicator & Progress Metric (Levels 2–3, Multi-Term)
-* **Description:** Displays overall and per-organization clearance statuses evaluated across all affiliated Level 2 (Plus) and Level 3 (Premium) organizations for the selected term.
+### FR-CLR-01: Official Clearance Status Indicator & Progress Metric (Plus & Premium Tiers, Multi-Term)
+* **Description:** Displays overall and per-organization clearance statuses evaluated across all affiliated Plus and Premium tier organizations for the selected term.
 * **Overall Status:** `CLEARED` (Green) only if all affiliated organizations are cleared; `NOT CLEARED` (Red) if at least one organization has unresolved obligations; `PENDING REVIEW` (Yellow/Amber) if all remaining obligations are awaiting officer review.
 
 ---

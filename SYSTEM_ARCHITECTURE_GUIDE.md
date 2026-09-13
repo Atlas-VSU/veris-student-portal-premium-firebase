@@ -45,16 +45,18 @@ The VERIS platform consists of two distinct applications interacting over a shar
 └──────────────────────────────────────┘          └──────────────────────────────────────┘
 ```
 
-### Operational Capability Levels & Data Scoping
+### Population Scope vs. Subscription Tier Capabilities
 
-In the VERIS system, **Access Levels (1, 2, and 3)** define an organization's overall operational capability within the system (not the scope of its student population):
+In the VERIS ecosystem, **Population Scope** and **Subscription Tier Capabilities** are strictly decoupled:
+- **Population Scope (`accessLevel: 1 | 2 | 3`)**: Controls institutional audience reach in backend queries (`1`: Program-specific, `2`: Faculty/College-specific, `3`: University-wide / Apex). In the student portal UI, affiliated organizations are rendered directly by name (`orgName`) without artificial level labels.
+- **Subscription Tiers (`basic` | `plus` | `premium`)**: Stored in the `subscriptions` collection and dictate the operational modules enabled for an organization:
 
-| Domain Module | Applicable Organization Levels | Scope Behavior for Student Portal |
+| Domain Module | Applicable Subscription Tiers | Scope Behavior for Student Portal |
 |---|---|---|
-| **Events & Attendance** (`/events`, `/attendance`) | **Access Levels 1, 2, and 3** | Aggregates event schedules, attendance scans, and participation stats across all affiliated organizations (Level 1 basic, Level 2 plus, Level 3 premium). |
-| **Fees & Ledgers** (`/fees`) | **Access Levels 2 and 3 ONLY** | Displays assessed fees issued by Level 2 and Level 3 organizations. Unpaid fee callouts redirect internally to `/clearance`. |
-| **Fines & Infractions** (`/fines`) | **Access Levels 2 and 3 ONLY** | Displays infraction records, fine balances, and appeal triggers for Level 2 and Level 3 organizations. |
-| **Clearance & Built-In Payment Portal** (`/clearance`) | **Access Levels 2 and 3 ONLY** | Tracks clearance blockers across all Level 2 and Level 3 organizations. Houses the built-in payment portal for settling obligations. |
+| **Events & Attendance** (`/events`, `/attendance`) | **Basic, Plus, and Premium** | Aggregates event schedules, attendance scans, and participation stats across all affiliated organizations, filtered by the student's population scope. |
+| **Fees & Ledgers** (`/fees`) | **Plus and Premium ONLY** | Displays assessed fees issued by Plus and Premium tier organizations. Unpaid fee callouts redirect internally to `/clearance`. |
+| **Fines & Infractions** (`/fines`) | **Plus and Premium ONLY** | Displays infraction records, fine balances, and appeal triggers for Plus and Premium tier organizations. |
+| **Clearance & Built-In Payment Portal** (`/clearance`) | **Plus and Premium ONLY** | Tracks clearance blockers across all Plus and Premium tier organizations. Houses the built-in payment portal for settling obligations. |
 
 ### Architectural Separation of Concerns
 
@@ -454,7 +456,21 @@ interface BlockingItem {
 
 ---
 
-### 4.9 `audit_logs`
+### 4.9 `subscriptions`
+* **Doc ID:** Organization ID (`orgId`) or Auto-generated with `orgId` field
+* **Purpose:** Single source of truth for organization tier operational capabilities.
+
+| Field | Type | Description |
+|---|---|---|
+| `orgId` | `string` | FK → `organizations` |
+| `tier` | `"basic" \| "plus" \| "premium"` | Capability tier: `"basic"` (Events/Attendance only), `"plus"` / `"premium"` (Full Fees, Fines, Clearance & Online Payments) |
+| `status` | `"active" \| "inactive" \| "expired"` | Subscription status |
+| `startDate` | `Timestamp?` | Subscription start timestamp |
+| `endDate` | `Timestamp?` | Subscription expiry timestamp |
+
+---
+
+### 4.10 `audit_logs`
 * **Doc ID:** Auto-generated  
 * **Purpose:** Immutable, append-only security and operational audit trail.
 
@@ -479,10 +495,12 @@ interface BlockingItem {
     └── date > today                ──► "upcoming"
         * "archived" and "manuallyCompleted" events are preserved.
 
-[Attendance Logging]
+[Attendance Logging & Ledger Resolution]
+    ├── Time-In + Time-Out          ──► status = "present"
     ├── Time-In Only                ──► status = "partially present"
-    └── Time-In + Time-Out          ──► status = "present"
-        * Event attendee counter incremented atomically: increment(1)
+    └── No check-in + Infraction    ──► status = "absent" (derived from fines/{fineId}/fineItems)
+        * Unified Ledger merges eventAttendees and fineItems with orgName enrichment.
+        * Events Catalog strictly scopes Level 1 (Program) & Level 2 (Faculty) by student affiliation.
 ```
 
 ---
@@ -549,7 +567,7 @@ The clearance engine computes a 3-state resolution from the student's `blockingI
 ```
 [Student Action in Student Portal]
 Student navigates to /clearance (Built-In Payment Portal):
-   1. Reviews clearance checklist segmented by affiliated Level 2 & 3 Organizations
+   1. Reviews clearance checklist segmented by affiliated Plus & Premium Organizations
    2. Clicks "Pay [Org Name] Obligations" on the specific organization card
    3. Selects unpaid fee/fine items belonging exclusively to that orgId
    4. Selects payment method (GCash, Bank Transfer, Cash)
