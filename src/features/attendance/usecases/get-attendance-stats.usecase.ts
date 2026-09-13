@@ -19,7 +19,7 @@ export async function getAttendanceStatsUseCase(input: GetAttendanceStatsInput):
 
   for (const doc of attendanceSnapshot.docs) {
     const data = doc.data()
-    
+
     // If term filter is active, check event's term
     if (input.academicYear && input.semester && data.eventId) {
       const event = await getEventByIdUseCase({ eventId: data.eventId })
@@ -36,11 +36,12 @@ export async function getAttendanceStatsUseCase(input: GetAttendanceStatsInput):
   }
 
   let absencesCount = 0
+  let pendingAppealsCount = 0
+
   try {
     let finesQuery = adminDb
       .collection('fines')
       .where('userId', '==', input.userId)
-      .where('metadata.isArchived', '==', false)
 
     if (input.academicYear) {
       finesQuery = finesQuery.where('academicYear', '==', input.academicYear)
@@ -52,16 +53,24 @@ export async function getAttendanceStatsUseCase(input: GetAttendanceStatsInput):
     const finesSnapshot = await finesQuery.get()
 
     for (const fineDoc of finesSnapshot.docs) {
+      const fineData = fineDoc.data()
+      if (fineData.isArchived === true || fineData.metadata?.isArchived === true) {
+        continue
+      }
+
       const itemsSnapshot = await fineDoc.ref.collection('fineItems').get()
       itemsSnapshot.docs.forEach((itemDoc) => {
         const itemData = itemDoc.data()
-        if (itemData.eventId && !itemData.isArchived) {
+        if (itemData.eventId && !itemData.isArchived && !itemData.isWaived) {
           absencesCount++
+          if (itemData.isPending === true) {
+            pendingAppealsCount++
+          }
         }
       })
     }
-  } catch {
-    // Keep count at 0 on failure
+  } catch (err) {
+    console.error('Error computing fine absence infractions in getAttendanceStatsUseCase:', err)
   }
 
   return {
@@ -69,6 +78,6 @@ export async function getAttendanceStatsUseCase(input: GetAttendanceStatsInput):
     partialCount,
     totalAttended: presentCount + partialCount,
     absencesCount,
+    pendingAppealsCount,
   }
 }
-

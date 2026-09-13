@@ -1,4 +1,5 @@
 import { adminDb } from '@/lib/firebase/admin'
+import { toSafeDate, toIsoString } from '@/lib/date-format'
 import type { AttendanceRecord } from '../types'
 
 interface GetMyAttendanceInput {
@@ -19,13 +20,13 @@ export async function getMyAttendanceUseCase(input: GetMyAttendanceInput): Promi
       userId: data.userId,
       studentId: data.studentId,
       student: data.student,
-      timeIn: data.timeIn,
-      timeOut: data.timeOut,
-      status: data.status,
+      timeIn: toIsoString(data.timeIn),
+      timeOut: toIsoString(data.timeOut),
+      status: data.status || 'partially present',
       remark: data.remark,
       orgId: data.orgId,
     }
   })
 
-  return records.sort((a, b) => (b.timeIn?.toMillis?.() ?? 0) - (a.timeIn?.toMillis?.() ?? 0))
+  return records.sort((a, b) => (toSafeDate(b.timeIn)?.getTime() ?? 0) - (toSafeDate(a.timeIn)?.getTime() ?? 0))
 }

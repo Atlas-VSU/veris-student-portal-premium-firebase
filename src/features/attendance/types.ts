@@ -1,10 +1,9 @@
 import type { ActionResult } from '@/types'
-import type { Timestamp } from 'firebase-admin/firestore'
 import type { TermFilter } from '@/features/terms/types'
 
 export type { ActionResult, TermFilter }
 
-export type AttendanceStatus = 'partially present' | 'present'
+export type AttendanceStatus = 'present' | 'partially present' | 'absent'
 
 export interface AttendanceRecord {
   id: string
@@ -19,8 +18,8 @@ export interface AttendanceRecord {
     facultyId?: string
     yearLevel?: number
   }
-  timeIn?: Timestamp
-  timeOut?: Timestamp
+  timeIn?: string | null
+  timeOut?: string | null
   status: AttendanceStatus
   remark?: string
   orgId: string
@@ -30,13 +29,19 @@ export interface AttendanceHistoryItem {
   id: string
   eventId: string
   eventName: string
-  eventDate?: Timestamp
+  eventDate?: string | null
   location?: string
+  orgId?: string
+  orgName?: string
   majorEvent: boolean
-  timeIn?: Timestamp
-  timeOut?: Timestamp
+  timeIn?: string | null
+  timeOut?: string | null
   status: AttendanceStatus
   remark?: string
+  fineAmount?: number
+  isPendingAppeal?: boolean
+  parentFineId?: string
+  fineItemId?: string
 }
 
 export interface AttendanceStats {
@@ -44,4 +49,5 @@ export interface AttendanceStats {
   partialCount: number
   totalAttended: number
   absencesCount: number
+  pendingAppealsCount?: number
 }
