@@ -1,7 +1,8 @@
 import type { ActionResult } from '@/types'
 import type { Timestamp } from 'firebase-admin/firestore'
+import type { TermFilter } from '@/features/terms/types'
 
-export type { ActionResult }
+export type { ActionResult, TermFilter }
 
 export type EventStatus = 'upcoming' | 'ongoing' | 'completed' | 'archived'
 

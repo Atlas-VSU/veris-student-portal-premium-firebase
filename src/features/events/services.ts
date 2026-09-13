@@ -1,6 +1,6 @@
 import { getActiveTermUseCase } from '@/features/terms/usecases/get-active-term.usecase'
 import { getActiveEventsUseCase } from './usecases/get-active-events.usecase'
-import type { Event, EventStatus } from './types'
+import type { Event, EventStatus, TermFilter } from './types'
 
 export function determineEventStatus(dateMillis: number, manuallyCompleted = false): EventStatus {
   if (manuallyCompleted) return 'completed'
@@ -12,15 +12,22 @@ export function determineEventStatus(dateMillis: number, manuallyCompleted = fal
   return 'upcoming'
 }
 
-export async function getActiveEventsService(): Promise<Event[]> {
-  const activeTerm = await getActiveTermUseCase()
-  if (!activeTerm) {
-    return []
+export async function getEventsService(filter?: TermFilter): Promise<Event[]> {
+  let academicYear = filter?.academicYear
+  let semester = filter?.semester
+
+  if (!academicYear || !semester) {
+    const activeTerm = await getActiveTermUseCase()
+    if (!activeTerm) {
+      return []
+    }
+    academicYear = academicYear || activeTerm.AY
+    semester = semester || activeTerm.semester
   }
 
   const events = await getActiveEventsUseCase({
-    academicYear: activeTerm.AY,
-    semester: activeTerm.semester,
+    academicYear,
+    semester,
   })
 
   return events.map((event) => {
@@ -34,3 +41,8 @@ export async function getActiveEventsService(): Promise<Event[]> {
     }
   })
 }
+
+export async function getActiveEventsService(): Promise<Event[]> {
+  return getEventsService()
+}
+
