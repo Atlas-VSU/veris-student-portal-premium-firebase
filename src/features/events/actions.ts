@@ -6,15 +6,15 @@ import { getEventByIdUseCase } from './usecases/get-event-by-id.usecase'
 import type { ActionResult, Event, TermFilter } from './types'
 
 export async function getEventsAction(filter?: TermFilter): Promise<ActionResult<Event[]>> {
-  return withAuth('events:list', async () => {
-    const events = await getEventsService(filter)
+  return withAuth('events:list', async (userId) => {
+    const events = await getEventsService(userId, filter)
     return { ok: true, data: events }
   })
 }
 
 export async function getActiveEventsAction(): Promise<ActionResult<Event[]>> {
-  return withAuth('events:listActive', async () => {
-    const events = await getActiveEventsService()
+  return withAuth('events:listActive', async (userId) => {
+    const events = await getActiveEventsService(userId)
     return { ok: true, data: events }
   })
 }
@@ -25,4 +25,3 @@ export async function getEventByIdAction(eventId: string): Promise<ActionResult<
     return { ok: true, data: event }
   })
 }
-

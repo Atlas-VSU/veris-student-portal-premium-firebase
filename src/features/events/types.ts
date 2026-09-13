@@ -1,5 +1,4 @@
 import type { ActionResult } from '@/types'
-import type { Timestamp } from 'firebase-admin/firestore'
 import type { TermFilter } from '@/features/terms/types'
 
 export type { ActionResult, TermFilter }
@@ -9,12 +8,13 @@ export type EventStatus = 'upcoming' | 'ongoing' | 'completed' | 'archived'
 export interface Event {
   id: string
   name: string
-  date: Timestamp
+  date: string
   location: string
   note?: string
   majorEvent: boolean
   fineTypeId: string
   orgId: string
+  orgName?: string
   programId?: string
   facultyId?: string
   accessLevelEvent?: 1 | 2 | 3
@@ -29,14 +29,15 @@ export interface Event {
   timeOutStart?: string
   timeOutEnd?: string
   isDeleted: boolean
-  createdAt?: Timestamp
+  createdAt?: string | null
 }
 
 export interface EventSummary {
   id: string
   name: string
-  date: Timestamp
+  date: string
   location: string
+  orgName?: string
   majorEvent: boolean
   status: EventStatus
 }

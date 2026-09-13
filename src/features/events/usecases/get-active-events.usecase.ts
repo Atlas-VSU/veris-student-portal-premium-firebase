@@ -1,37 +1,42 @@
 import { adminDb } from '@/lib/firebase/admin'
+import { toSafeDate, toIsoString } from '@/lib/date-format'
 import type { Event } from '../types'
 
-interface GetActiveEventsInput {
-  academicYear: string
-  semester: string
+interface GetEventsInput {
+  academicYear?: string
+  semester?: string
 }
 
-export async function getActiveEventsUseCase(input: GetActiveEventsInput): Promise<Event[]> {
-  const snapshot = await adminDb
-    .collection('events')
-    .where('academicYear', '==', input.academicYear)
-    .where('semester', '==', input.semester)
-    .where('isDeleted', '==', false)
-    .get()
+export async function getActiveEventsUseCase(input?: GetEventsInput): Promise<Event[]> {
+  let query = adminDb.collection('events').where('isDeleted', '==', false)
+
+  if (input?.academicYear) {
+    query = query.where('academicYear', '==', input.academicYear)
+  }
+  if (input?.semester) {
+    query = query.where('semester', '==', input.semester)
+  }
+
+  const snapshot = await query.get()
 
   const events: Event[] = snapshot.docs.map((doc) => {
     const data = doc.data()
     return {
       id: doc.id,
-      name: data.name,
-      date: data.date,
-      location: data.location,
+      name: data.name || 'University Event',
+      date: toIsoString(data.date) || new Date().toISOString(),
+      location: data.location || 'Campus',
       note: data.note,
       majorEvent: data.majorEvent ?? false,
-      fineTypeId: data.fineTypeId,
-      orgId: data.orgId,
+      fineTypeId: data.fineTypeId || '',
+      orgId: data.orgId || '',
       programId: data.programId,
       facultyId: data.facultyId,
       accessLevelEvent: data.accessLevelEvent,
-      status: data.status,
+      status: data.status || 'upcoming',
       attendees: data.attendees ?? 0,
-      academicYear: data.academicYear,
-      semester: data.semester,
+      academicYear: data.academicYear || '',
+      semester: data.semester || '',
       finesGenerated: data.finesGenerated ?? false,
       manuallyCompleted: data.manuallyCompleted ?? false,
       timeInStart: data.timeInStart,
@@ -39,9 +44,9 @@ export async function getActiveEventsUseCase(input: GetActiveEventsInput): Promi
       timeOutStart: data.timeOutStart,
       timeOutEnd: data.timeOutEnd,
       isDeleted: data.isDeleted ?? false,
-      createdAt: data.createdAt,
+      createdAt: toIsoString(data.createdAt),
     }
   })
 
-  return events.sort((a, b) => (b.date?.toMillis?.() ?? 0) - (a.date?.toMillis?.() ?? 0))
+  return events.sort((a, b) => (toSafeDate(b.date)?.getTime() ?? 0) - (toSafeDate(a.date)?.getTime() ?? 0))
 }

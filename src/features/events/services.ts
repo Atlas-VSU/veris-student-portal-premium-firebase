@@ -1,5 +1,8 @@
 import { getActiveTermUseCase } from '@/features/terms/usecases/get-active-term.usecase'
 import { getActiveEventsUseCase } from './usecases/get-active-events.usecase'
+import { getOrganizationsMapUseCase } from './usecases/get-organizations-map.usecase'
+import { getStudentAffiliationUseCase } from '@/features/profile/usecases/get-student-affiliation.usecase'
+import { toSafeDate } from '@/lib/date-format'
 import type { Event, EventStatus, TermFilter } from './types'
 
 export function determineEventStatus(dateMillis: number, manuallyCompleted = false): EventStatus {
@@ -12,37 +15,72 @@ export function determineEventStatus(dateMillis: number, manuallyCompleted = fal
   return 'upcoming'
 }
 
-export async function getEventsService(filter?: TermFilter): Promise<Event[]> {
+export async function getEventsService(userId?: string, filter?: TermFilter): Promise<Event[]> {
   let academicYear = filter?.academicYear
   let semester = filter?.semester
 
-  if (!academicYear || !semester) {
+  // If filter is explicitly undefined (default initial load), fallback to active term
+  if (filter === undefined) {
     const activeTerm = await getActiveTermUseCase()
-    if (!activeTerm) {
-      return []
+    if (activeTerm) {
+      academicYear = activeTerm.AY
+      semester = activeTerm.semester
     }
-    academicYear = academicYear || activeTerm.AY
-    semester = semester || activeTerm.semester
   }
 
-  const events = await getActiveEventsUseCase({
-    academicYear,
-    semester,
+  const [rawEvents, orgMap, affiliation] = await Promise.all([
+    getActiveEventsUseCase({
+      academicYear,
+      semester,
+    }),
+    getOrganizationsMapUseCase(),
+    userId ? getStudentAffiliationUseCase(userId) : Promise.resolve(null),
+  ])
+
+  // Filter events based on student's affiliation & Access Level (1, 2, 3)
+  const scopedEvents = rawEvents.filter((event) => {
+    const level = event.accessLevelEvent ?? 3
+    if (level === 3) return true // Campus / Apex level (all students)
+
+    if (!affiliation) return true // If no affiliation context, default to open
+
+    if (level === 2) {
+      // College / Faculty level
+      if (event.facultyId && affiliation.facultyId && event.facultyId !== affiliation.facultyId) {
+        return false
+      }
+      return true
+    }
+
+    if (level === 1) {
+      // Program level
+      if (event.programId && affiliation.programId && event.programId !== affiliation.programId) {
+        return false
+      }
+      return true
+    }
+
+    return true
   })
 
-  return events.map((event) => {
-    if (event.status === 'archived' || event.manuallyCompleted) {
-      return event
-    }
-    const computedStatus = determineEventStatus(event.date?.toMillis?.() ?? 0, event.manuallyCompleted)
+  return scopedEvents.map((event) => {
+    const dateMillis = toSafeDate(event.date)?.getTime() ?? Date.now()
+    const computedStatus =
+      event.status === 'archived' || event.manuallyCompleted
+        ? event.status
+        : determineEventStatus(dateMillis, event.manuallyCompleted)
+
+    const org = event.orgId ? orgMap.get(event.orgId) : undefined
+    const orgName = org?.name || 'University Organization'
+
     return {
       ...event,
+      orgName,
       status: computedStatus,
     }
   })
 }
 
-export async function getActiveEventsService(): Promise<Event[]> {
-  return getEventsService()
+export async function getActiveEventsService(userId?: string): Promise<Event[]> {
+  return getEventsService(userId)
 }
-

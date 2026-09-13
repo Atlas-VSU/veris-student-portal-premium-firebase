@@ -1,4 +1,5 @@
 import { adminDb } from '@/lib/firebase/admin'
+import { toIsoString } from '@/lib/date-format'
 import type { Event } from '../types'
 
 interface GetEventByIdInput {
@@ -19,20 +20,20 @@ export async function getEventByIdUseCase(input: GetEventByIdInput): Promise<Eve
 
   return {
     id: doc.id,
-    name: data.name,
-    date: data.date,
-    location: data.location,
+    name: data.name || 'University Event',
+    date: toIsoString(data.date) || new Date().toISOString(),
+    location: data.location || 'Campus',
     note: data.note,
     majorEvent: data.majorEvent ?? false,
-    fineTypeId: data.fineTypeId,
-    orgId: data.orgId,
+    fineTypeId: data.fineTypeId || '',
+    orgId: data.orgId || '',
     programId: data.programId,
     facultyId: data.facultyId,
     accessLevelEvent: data.accessLevelEvent,
-    status: data.status,
+    status: data.status || 'upcoming',
     attendees: data.attendees ?? 0,
-    academicYear: data.academicYear,
-    semester: data.semester,
+    academicYear: data.academicYear || '',
+    semester: data.semester || '',
     finesGenerated: data.finesGenerated ?? false,
     manuallyCompleted: data.manuallyCompleted ?? false,
     timeInStart: data.timeInStart,
@@ -40,6 +41,6 @@ export async function getEventByIdUseCase(input: GetEventByIdInput): Promise<Eve
     timeOutStart: data.timeOutStart,
     timeOutEnd: data.timeOutEnd,
     isDeleted: data.isDeleted ?? false,
-    createdAt: data.createdAt,
+    createdAt: toIsoString(data.createdAt),
   }
 }
