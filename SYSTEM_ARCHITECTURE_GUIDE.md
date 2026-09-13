@@ -34,15 +34,27 @@ The VERIS platform consists of two distinct applications interacting over a shar
 │       VERIS Student Portal           │          │       CORAL-USSC Admin Portal        │
 │       (This Repository)              │          │       (Officer / Admin System)       │
 ├──────────────────────────────────────┤          ├──────────────────────────────────────┤
-│ • Student Self-Service               │          │ • Officer Operations & Audits        │
-│ • View My Fees, Fines & Balances     │          │ • Create Events & Generate Fines     │
-│ • Submit Payment Proofs (GCash/Bank) │  Shared  │ • Fee Generation & Batch Rosters     │
-│ • Check Attendance & Event History   │ Firestore│ • Payment Verification & Cashiering  │
-│ • Monitor Semester Clearance Status  │ ◄──────► │ • Clearance Recalculation Engine     │
-│ • Update Personal Profile            │          │ • Access Level Scoping (L1 / L2 / L3)│
-│ • Ownership Authorization ONLY       │          │ • Role-Based Access Control (RBAC)   │
+│ • Student Self-Service & Status      │          │ • Officer Operations & Audits        │
+│ • View Fees, Fines & Balances (L2-3) │          │ • Create Events & Generate Fines     │
+│ • Multi-Term & Historical Lookup     │  Shared  │ • Fee Generation & Batch Rosters     │
+│ • Built-In Payment Portal (/clearance│ Firestore│ • Payment Verification & Cashiering  │
+│ • Submit Payment Proofs (GCash/Bank) │ ◄──────► │ • Clearance Recalculation Engine     │
+│ • Check Attendance & History (L1-3)  │          │ • Access Level Scoping (L1 / L2 / L3)│
+│ • Monitor Semester Clearance (L2-3)  │          │ • Role-Based Access Control (RBAC)   │
+│ • Submit Fine Infraction Appeals     │          │ • Physical Payment Recording         │
 └──────────────────────────────────────┘          └──────────────────────────────────────┘
 ```
+
+### Operational Capability Levels & Data Scoping
+
+In the VERIS system, **Access Levels (1, 2, and 3)** define an organization's overall operational capability within the system (not the scope of its student population):
+
+| Domain Module | Applicable Organization Levels | Scope Behavior for Student Portal |
+|---|---|---|
+| **Events & Attendance** (`/events`, `/attendance`) | **Access Levels 1, 2, and 3** | Aggregates event schedules, attendance scans, and participation stats across all affiliated organizations (Level 1 basic, Level 2 plus, Level 3 premium). |
+| **Fees & Ledgers** (`/fees`) | **Access Levels 2 and 3 ONLY** | Displays assessed fees issued by Level 2 and Level 3 organizations. Unpaid fee callouts redirect internally to `/clearance`. |
+| **Fines & Infractions** (`/fines`) | **Access Levels 2 and 3 ONLY** | Displays infraction records, fine balances, and appeal triggers for Level 2 and Level 3 organizations. |
+| **Clearance & Built-In Payment Portal** (`/clearance`) | **Access Levels 2 and 3 ONLY** | Tracks clearance blockers across all Level 2 and Level 3 organizations. Houses the built-in payment portal for settling obligations. |
 
 ### Architectural Separation of Concerns
 
@@ -50,8 +62,9 @@ The VERIS platform consists of two distinct applications interacting over a shar
 |---|---|---|
 | **Primary Audience** | Enrolled Students | Organization Officers, Faculty Admins, Super Admins |
 | **Auth Model** | Session Cookie + **Ownership Key (`userId`)** | Session Cookie + **Access Level (1=Prog, 2=Fac, 3=Org)** |
-| **Data Scope** | Strict Self-Access (`where("studentId", "==", userId)`) | Multi-tenant Org Scoped (`buildBaseConstraints`) |
+| **Data Scope** | Strict Self-Access (`where("userId", "==", userId)`) across active & historical terms | Multi-tenant Org Scoped (`buildBaseConstraints`) |
 | **Database SDK** | **Firebase Admin SDK** inside Server Actions & Use Cases | **Client SDK + Admin SDK** |
+| **Payment Flow** | **Built-in Payment Hub on `/clearance`**: Students submit proofs for unpaid obligations | **In-App Cashiering**: Verifies submitted proofs & logs over-the-counter payments |
 | **Deletion Policy** | No physical deletes (Soft-delete / `isArchived`) | Soft-delete with cascading archival |
 
 ---
@@ -74,14 +87,14 @@ src/
 │   └── api/auth/                        # Lightweight Session Endpoints
 │
 ├── features/                            # 🚀 VERTICAL FEATURE MODULES
-│   ├── attendance/                      # Attendance tracking domain
+│   ├── attendance/                      # Attendance tracking & participation stats
 │   ├── auth/                            # Session, cookie & audit logging
 │   ├── clearance/                       # Semester clearance status & blockers
-│   ├── events/                          # Event schedule & requirements
-│   ├── fees/                            # Fee balances & payment submissions
-│   ├── fines/                           # Accumulated fines & itemized logs
+│   ├── events/                          # Event schedule, catalog & requirements
+│   ├── fees/                            # Fee ledger & payment portal redirect
+│   ├── fines/                           # Infraction records, fine balances & appeals
 │   ├── profile/                         # Student identity details
-│   └── terms/                           # Active academic term lookup
+│   └── terms/                           # Active & historical academic term lookup
 │
 ├── components/                          # Cross-feature shared UI (Owned by Frontend)
 │   ├── ui/                              # Primitive UI components (ShadCN)
@@ -378,7 +391,8 @@ Server: Clear-Cookie: __session
 
 ### 4.7 `clearanceStatus`
 * **Doc ID:** Deterministic Compound Key: `${userId}${orgId}:${AY}-${semester}` (e.g. `usr_123org_456:2025-2026-1st`)
-* **Purpose:** Single source of truth for student semester clearance.
+* **Purpose:** Single source of truth for student semester clearance per organization.
+* **Per-Org Partitioning:** Because a student can belong to multiple organizations (e.g. College Org [Level 2] and Central Apex [Level 3]), each organization maintains an independent `clearanceStatus` record for the student per term. Querying `clearanceStatus` where `userId == userId` provides the full set of organization clearance states and their corresponding `blockingItems` checklists.
 
 | Field | Type | Description |
 |---|---|---|
@@ -395,6 +409,7 @@ Server: Clear-Cookie: __session
 | `isArchived` | `boolean` | Archival status |
 
 #### Structure of `blockingItems` Map:
+
 ```typescript
 interface BlockingItem {
   type: "fees" | "fines"
@@ -529,26 +544,36 @@ The clearance engine computes a 3-state resolution from the student's `blockingI
 
 ---
 
-### 5.4 Payment & Proof Verification Workflow
+### 5.4 Payment & Clearance Settlement Workflow (Per-Organization Hub on `/clearance`)
 
 ```
-[Student Action]
-Student submits GCash receipt on /fees:
-   1. Create proofOfPayments doc (status: "pending")
-   2. Update clearanceStatus.blockingItems[feeId].pendingReview = true
-   3. Recalculate clearance ──► Student status becomes "pending"
+[Student Action in Student Portal]
+Student navigates to /clearance (Built-In Payment Portal):
+   1. Reviews clearance checklist segmented by affiliated Level 2 & 3 Organizations
+   2. Clicks "Pay [Org Name] Obligations" on the specific organization card
+   3. Selects unpaid fee/fine items belonging exclusively to that orgId
+   4. Selects payment method (GCash, Bank Transfer, Cash)
+   5. Enters reference number & uploads receipt image to Firebase Storage (/proofOfPayments/{orgId}/{userId}/{ts}.png)
+   6. Action executes submitPaymentProofAction({ orgId, selectedItemKeys, amount, ... }):
+      • Creates proofOfPayments doc with matching orgId (status: "pending", itemKeys: selectedItemKeys)
+      • Sets clearanceStatus.blockingItems[id].pendingReview = true for selected items in that org's clearance
+      • Updates corresponding fees docs (status = "pending") and fineItems docs (isPending = true)
+      • Executes recalculateClearanceStatus(userId, orgId, term) ──► transitions org status to "PENDING REVIEW ⏳"
 
-[Officer Action in Admin Portal]
-Officer verifies transaction:
+[Officer Action in CORAL-USSC Admin Portal (Scoped per Org)]
+Officers/Treasurers of that specific orgId verify the transaction:
    1. Firestore Transaction:
-      • proofOfPayments.status = "verified"
+      • proofOfPayments.status = "verified" (or cash receipt issued)
       • fees/{feeId}.paidAmount += payment.amount
       • fees/{feeId}.balance = amount - paidAmount
       • Append fees/{feeId}/paymentHistory record
       • clearanceStatus.blockingItems[feeId].balance = newBalance
       • clearanceStatus.blockingItems[feeId].pendingReview = false
-   2. Recalculate clearance ──► If all balances 0, status becomes "cleared"
+   2. Recalculate clearance for that organization ──► If all balances 0 in that org, that org becomes "CLEARED"
    3. Invalidate caches (clearance & fee records)
+
+[Student Portal Refresh]
+Student portal reflects verified payment history, 0 balance for that org, and updates overall clearance progress.
 ```
 
 ---
@@ -564,17 +589,26 @@ The Student Portal utilizes Next.js Server Function Caching (`'use cache'`) plac
 import { adminDb } from '@/lib/firebase/admin'
 import { cacheTag, cacheLife } from 'next/cache'
 
-export async function getMyFeesUseCase({ userId }: { userId: string }) {
-  'use cache'
-  cacheTag(`fees-${userId}`)  // User-scoped cache tag
-  cacheLife('minutes')        // Short TTL for financial records
+interface GetMyFeesInput {
+  userId: string
+  academicYear?: string
+  semester?: string
+}
 
-  const snapshot = await adminDb
+export async function getMyFeesUseCase({ userId, academicYear, semester }: GetMyFeesInput) {
+  'use cache'
+  cacheTag(academicYear && semester ? `fees-${userId}-${academicYear}-${semester}` : `fees-${userId}`)
+  cacheLife('minutes') // Short TTL for financial records
+
+  let query = adminDb
     .collection('fees')
     .where('userId', '==', userId)
     .where('isArchived', '==', false)
-    .get()
 
+  if (academicYear) query = query.where('academicYear', '==', academicYear)
+  if (semester) query = query.where('semester', '==', semester)
+
+  const snapshot = await query.get()
   return snapshot.docs.map(d => ({ id: d.id, ...d.data() }))
 }
 ```
@@ -584,7 +618,8 @@ export async function getMyFeesUseCase({ userId }: { userId: string }) {
 | Domain | Cache Lifetime | Tag Pattern | Revalidation Trigger |
 |---|---|---|---|
 | **Active Term** | `hours` / Long | `active-term` | Admin updates active semester |
-| **Events Catalog** | `hours` / Long | `events-catalog` | New event published |
+| **All Terms List** | `hours` / Long | `terms-all` | Admin creates/archives term |
+| **Events Catalog** | `hours` / Long | `events-${academicYear}-${semester}` | New event published |
 | **Student Fees** | `minutes` / Short | `fees-${userId}` | Payment verified or fee assigned |
 | **Student Fines** | `minutes` / Short | `fines-${userId}` | Event fines generated or fine waived |
 | **Clearance Status**| `minutes` + Webhook | `clearance-${userId}` | Admin clearance update / payment review |
@@ -602,7 +637,7 @@ import { adminDb } from '@/lib/firebase/admin'
 
 export interface LogEntry {
   userId: string
-  action: string      // Format: 'domain:verb' (e.g. 'fees:submit')
+  action: string      // Format: 'domain:verb' (e.g. 'fines:appeal')
   success: boolean
   error?: string
 }
@@ -632,7 +667,7 @@ export async function logAction(entry: LogEntry): Promise<void> {
 
 ## 8. Engineering Standards & Code Patterns
 
-### Standard 1: Server Action Template
+### Standard 1: Server Action Template (with Term Filter)
 
 ```typescript
 // features/fines/actions.ts
@@ -641,33 +676,33 @@ export async function logAction(entry: LogEntry): Promise<void> {
 import { withAuth } from '@/lib/firebase/with-auth'
 import { getMyFinesUseCase } from './usecases/get-my-fines.usecase'
 import type { ActionResult } from '@/types'
-import type { Fine } from './types'
+import type { FineParent, TermFilter } from './types'
 
-export async function getMyFinesAction(): Promise<ActionResult<Fine[]>> {
-  return withAuth('fines:list', async (userId) => {
-    const fines = await getMyFinesUseCase({ userId })
+export async function getMyFinesAction(filter?: TermFilter): Promise<ActionResult<FineParent | null>> {
+  return withAuth('fines:getSummary', async (userId) => {
+    const fines = await getMyFinesUseCase({ userId, ...filter })
     return { ok: true, data: fines }
   })
 }
 ```
 
-### Standard 2: Mutation Action with Audit
+### Standard 2: Mutation Action with Audit (e.g. Fine Appeal)
 
 ```typescript
-// features/fees/actions/submit-proof.ts
+// features/fines/actions/submit-appeal.ts
 'use server'
 
 import { withAuth } from '@/lib/firebase/with-auth'
 import { logAction } from '@/features/auth/usecases/log-action.usecase'
-import { submitProofUseCase } from '../usecases/submit-proof.usecase'
+import { submitFineAppealUseCase } from '../usecases/submit-fine-appeal.usecase'
 import type { ActionResult } from '@/types'
 
-export async function submitPaymentProofAction(payload: ProofInput): Promise<ActionResult> {
-  return withAuth('fees:submit-proof', async (userId) => {
-    await submitProofUseCase({ userId, ...payload })
+export async function submitFineAppealAction(fineItemId: string, reason: string): Promise<ActionResult> {
+  return withAuth('fines:appeal', async (userId) => {
+    await submitFineAppealUseCase({ userId, fineItemId, reason })
     
     // Log mutation asynchronously (fire-and-forget)
-    void logAction({ userId, action: 'fees:submit-proof', success: true })
+    void logAction({ userId, action: 'fines:appeal', success: true })
     
     return { ok: true, data: undefined }
   })

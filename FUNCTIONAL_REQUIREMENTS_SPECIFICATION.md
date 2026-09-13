@@ -1,6 +1,6 @@
 # VERIS Student Portal — Functional Requirements Specification (FRS)
 
-> **Document Version:** 1.0.0  
+> **Document Version:** 1.2.0  
 > **Status:** Approved / Active  
 > **Scope:** Student-Facing Web Application (`veris-student-portal`)  
 > **Source Baseline:** `VERIS Task List - Student Portal Tracker.csv` & `SYSTEM_ARCHITECTURE_GUIDE.md`
@@ -9,12 +9,23 @@
 
 ## 1. Document Overview & Scope
 
-This Functional Requirements Specification (FRS) establishes the authoritative technical and functional criteria for all features in the **VERIS Student Portal**. The student portal is a dedicated, self-service web interface enabling university students to monitor their fees, track attendance, manage fine records, submit payment proofs, and verify semester clearance.
+This Functional Requirements Specification (FRS) establishes the authoritative technical and functional criteria for all features in the **VERIS Student Portal**. The student portal is a dedicated, self-service web interface enabling university students to monitor their fees, track attendance, manage fine records, verify semester clearance, and settle financial obligations through the built-in payment portal located on the Clearance page.
+
+> [!IMPORTANT]
+> ### 💳 Built-In Payment Portal Location
+> The student portal features a **built-in payment portal housed directly on the Clearance page (`/clearance`)**. Unpaid fee and fine callouts across the portal (such as on `/fees` and the Dashboard) redirect students internally to `/clearance` to select items and submit payments for verification.
+
+> [!NOTE]
+> ### 🏢 Organization Operational Capability Levels (Access Levels 1, 2, and 3)
+> In the VERIS ecosystem, an organization's **Access Level (1, 2, or 3)** defines its overall operational capability within the system:
+> - **Events & Attendance Views (`/events`, `/attendance`)**: Encompass records from **all organizations (Access Levels 1 to 3)** the student is affiliated with.
+> - **Fees, Fines, and Clearance Views (`/fees`, `/fines`, `/clearance`)**: Encompass records from **Access Levels 2 and 3 ONLY** (since Level 1 organizations do not have payment-related or financial operations).
 
 > [!NOTE]
 > ### 🎨 UI/UX Governance & Frontend Discretion Notice
-> All ASCII wireframes, visual layouts, widget arrangements, modal diagrams, and UI representations in this document are **functional suggestions and structural guides**. The **Frontend Lead** owns `src/components/`, `src/app/`, and all feature-specific UI in `src/features/<feature>/components/`, and holds **final authority and discretion** over all UI/UX design decisions, component aesthetics, design tokens, micro-interactions, and visual layouts. Backend implementation contracts (actions, types, data schemas) remain strictly governed by this specification and `ARCHITECTURE.md`.
+> All ASCII wireframes, visual layouts, widget arrangements, modal diagrams, and UI representations in this document are **functional suggestions and structural guides**. The **Frontend Lead** owns `src/components/`, `src/app/`, and all feature-specific UI in `src/features/<feature>/components/`, and holds **final authority and discretion** over all UI/UX design decisions, component aesthetics, design tokens, micro-interactions, and visual layouts. Backend implementation contracts (actions, types, data schemas) remain strictly governed by this specification and `SYSTEM_ARCHITECTURE_GUIDE.md`.
 
+---
 
 ### 1.1 Requirements Traceability Matrix
 
@@ -23,24 +34,26 @@ This Functional Requirements Specification (FRS) establishes the authoritative t
 | **Cross-Page** | Auth Login | **FR-AUTH-01** | Student Sign-In & Session Establishment via Cookie |
 | **Cross-Page** | Auth Sign Out | **FR-AUTH-02** | Student Sign-Out & Session Token Revocation |
 | **Cross-Page** | NavBar | **FR-NAV-01** | Global Header Navigation & Profile Snippet |
+| **Cross-Page** | Term Selector | **FR-TERM-01** | Global / Page-Level Term & Semester Selector (Defaults to Active Term) |
 | **Dashboard** | Active Term Header | **FR-DASH-01** | Current Academic Term Banner Resolution |
 | **Dashboard** | Student Greeting | **FR-DASH-02** | Personalized Identity & Academic Profile Header |
-| **Dashboard** | Events Summary Card | **FR-DASH-03** | Semester Events Attended Counter |
-| **Dashboard** | Fees Summary Card | **FR-DASH-04** | Total Outstanding Fee Balance Metric (₱) |
-| **Dashboard** | Fines Summary Card | **FR-DASH-05** | Total Outstanding Fine Balance Metric (₱) |
-| **Dashboard** | Clearance Summary Card | **FR-DASH-06** | Clearance Status Badge Indicator |
-| **Dashboard** | Clearance Requirements Widget | **FR-DASH-07** | Blocking Items Snapshot (Fees & Fines) |
-| **Dashboard** | Event Attendance Widget | **FR-DASH-08** | Recent 2–3 Attendance Records Mini-Feed |
-| **Events** | Attendance Stats | **FR-EVT-01** | Aggregate Attendance Counters (Attended / Absent / Excused) |
-| **Events** | Attendance History List | **FR-EVT-02** | Chronological Event Attendance History Ledger |
-| **Fees** | Fee List | **FR-FEE-01** | Current Term Assessed Fee Ledger |
-| **Fees** | Unpaid Fee Redirect | **FR-FEE-02** | Unpaid Fee Direct Payment / Clearance Call-to-Action |
-| **Fines** | Fines Summary Stats | **FR-FINE-01** | Fine Balance KPIs (Outstanding, Waived, Total) |
-| **Fines** | Fine History Table | **FR-FINE-02** | Itemized Infraction & Fine Items Ledger |
+| **Dashboard** | Events Summary Card | **FR-DASH-03** | Semester Events Attended Counter (Levels 1–3, Term-Scoped) |
+| **Dashboard** | Fees Summary Card | **FR-DASH-04** | Total Outstanding Fee Balance Metric (₱) (Levels 2–3, Term-Scoped) |
+| **Dashboard** | Fines Summary Card | **FR-DASH-05** | Total Outstanding Fine Balance Metric (₱) (Levels 2–3, Term-Scoped) |
+| **Dashboard** | Clearance Summary Card | **FR-DASH-06** | Clearance Status Badge Indicator (Levels 2–3, Term-Scoped) |
+| **Dashboard** | Clearance Requirements Widget | **FR-DASH-07** | Blocking Items Snapshot with Direct Redirect to `/clearance` |
+| **Dashboard** | Event Attendance Widget | **FR-DASH-08** | Recent 2–3 Attendance Records Mini-Feed (Levels 1–3) |
+| **Events** | Attendance Stats | **FR-EVT-01** | Aggregate Attendance Counters (Levels 1–3) with Term Filter |
+| **Events** | Attendance History List | **FR-EVT-02** | Chronological Event Attendance History Ledger (Levels 1–3) with Term Lookup |
+| **Events** | Events Catalog | **FR-EVT-03** | View Active & Historical Events by Term across Levels 1–3 |
+| **Fees** | Fee List | **FR-FEE-01** | Term Assessed Fee Ledger across Levels 2–3 (Active Term default & Term Lookup) |
+| **Fees** | Unpaid Fee Clearance Redirect | **FR-FEE-02** | Call-to-Action Link Redirecting to Built-In Payment Portal on `/clearance` |
+| **Fines** | Fines Summary Stats | **FR-FINE-01** | Fine Balance KPIs across Levels 2–3 with Term Filter |
+| **Fines** | Fine History Table | **FR-FINE-02** | Itemized Infraction & Fine Items Ledger (Levels 2–3) with Term Lookup |
 | **Fines** | Appeal Fine | **FR-FINE-03** | Fine Infraction Appeal Submission Modal |
-| **Clearance** | Clearance Status | **FR-CLR-01** | Official Clearance Status Banner & Progress Indicator |
-| **Clearance** | Requirements List | **FR-CLR-02** | Categorized Clearance Checklist (Fees & Fines Blockers) |
-| **Clearance** | Make Payment Button | **FR-CLR-03** | Multi-Item Payment Submission & Proof Upload Workflow |
+| **Clearance** | Clearance Status | **FR-CLR-01** | Official Clearance Status Banner & Progress across Levels 2–3 with Term Switcher |
+| **Clearance** | Requirements List | **FR-CLR-02** | Categorized Clearance Checklist (Fees & Fines Blockers from Levels 2–3) |
+| **Clearance** | Built-In Payment Portal | **FR-CLR-03** | Multi-Item Payment Submission & Proof Upload Workflow |
 
 ---
 
@@ -49,21 +62,20 @@ This Functional Requirements Specification (FRS) establishes the authoritative t
 ```
 ┌──────────────────────────┐
 │     Enrolled Student     │ ──► Authenticates via university credentials
-│      (Role: "user")      │ ──► Operates under strict ownership authorization (userId == studentId)
-└──────────────────────────┘ ──► Read access to own records; write access restricted to payment/appeals
+│      (Role: "user")      │ ──► Strict ownership authorization (userId == studentId)
+└──────────────────────────┘ ──► Read access to own records across all terms; writes for payments/appeals
 ```
 
 ---
 
-## 3. Module 1: Authentication & Global Shell (Cross-Page)
+## 3. Module 1: Authentication, Global Shell & Term Selection (Cross-Page)
 
 ### FR-AUTH-01: Student Sign-In & Session Establishment
-
-* **Description:** Allows an enrolled student to authenticate using university credentials (Firebase Email/Password or Google SSO) and establishes a secure, HTTP-only session cookie.
+* **Description:** Allows an enrolled student to authenticate using university credentials (Firebase Email/Password only; third-party SSO/OAuth providers are not supported) and establishes a secure, HTTP-only session cookie.
 * **Preconditions:** Student has an active, non-deleted account in the `users` collection with `isDeleted == false`.
 * **Execution Flow:**
-  1. Student enters credentials on `/login`.
-  2. Client Firebase SDK executes `signInWithEmailAndPassword` or `signInWithPopup`.
+  1. Student enters email address and password on `/login`.
+  2. Client Firebase SDK executes `signInWithEmailAndPassword(auth, email, password)`.
   3. Client retrieves raw JWT `idToken` from `auth.currentUser.getIdToken()`.
   4. Client invokes Server Action `createSessionAction(idToken)` or `POST /api/auth/session`.
   5. Server validates token via `adminAuth.createSessionCookie(idToken, { expiresIn: 14 days })`.
@@ -74,7 +86,6 @@ This Functional Requirements Specification (FRS) establishes the authoritative t
 ---
 
 ### FR-AUTH-02: Student Sign-Out & Session Invalidation
-
 * **Description:** Safely terminates the student session and revokes authentication tokens server-side.
 * **Execution Flow:**
   1. Student clicks **Sign Out** in the navigation bar.
@@ -86,7 +97,6 @@ This Functional Requirements Specification (FRS) establishes the authoritative t
 ---
 
 ### FR-NAV-01: Global Navigation Bar & Student Profile Snippet
-
 * **Description:** Persistent header across all authenticated views.
 * **Functional Requirements:**
   - Displays portal branding and active route highlighting:
@@ -94,10 +104,19 @@ This Functional Requirements Specification (FRS) establishes the authoritative t
     - **Events & Attendance** (`/events`, `/attendance`)
     - **Fees** (`/fees`)
     - **Fines** (`/fines`)
-    - **Clearance** (`/clearance`)
+    - **Clearance & Payments** (`/clearance`)
     - **Profile** (`/profile`)
   - Displays authenticated student avatar / initials and full name.
   - Houses the **Sign Out** action trigger.
+
+---
+
+### FR-TERM-01: Multi-Term & Semester Selector
+* **Description:** Standard dropdown/filter selector allowing students to query records from historical Academic Years and Semesters.
+* **Behavior:**
+  - Automatically resolves and defaults to the **Active Term** (`isActive == true`) on initial load.
+  - Fetches list of all non-deleted terms from `terms` collection via `getAllTermsAction()`.
+  - When term selection changes, queries update data views (Events, Attendance, Fees, Fines, Clearance) for the selected `academicYear` and `semester`.
 
 ---
 
@@ -105,13 +124,13 @@ This Functional Requirements Specification (FRS) establishes the authoritative t
 
 ```
 ┌────────────────────────────────────────────────────────────────────────────┐
-│ [FR-DASH-01] Active Term: 2025-2026 • 1st Semester                         │
+│ [FR-DASH-01] Active Term: 2025-2026 • 1st Semester  [ Term Selector ▼ ]     │
 │ [FR-DASH-02] Welcome back, Juan Dela Cruz (BSCS - 3rd Year)                │
 ├────────────────────────────────────────────────────────────────────────────┤
-│ [FR-DASH-03..06] KPI Summary Cards:                                        │
+│ [FR-DASH-03..06] KPI Summary Cards (Active Term):                          │
 │ ┌───────────────┐ ┌───────────────┐ ┌───────────────┐ ┌──────────────────┐ │
-│ │ Events: 4     │ │ Unpaid Fees:  │ │ Unpaid Fines: │ │ Clearance:       │ │
-│ │ Attended      │ │ ₱ 250.00      │ │ ₱ 100.00      │ │ NOT CLEARED ⚠️   │ │
+│ │ Events (L1-3) │ │ Unpaid Fees:  │ │ Unpaid Fines: │ │ Clearance:       │ │
+│ │ 4 Attended    │ │ ₱ 250.00 (L2-3│ │ ₱ 100.00 (L2-3│ │ NOT CLEARED ⚠️   │ │
 │ └───────────────┘ └───────────────┘ └───────────────┘ └──────────────────┘ │
 ├──────────────────────────────────────┬─────────────────────────────────────┤
 │ [FR-DASH-07] Clearance Requirements  │ [FR-DASH-08] Recent Attendance Feed │
@@ -122,205 +141,154 @@ This Functional Requirements Specification (FRS) establishes the authoritative t
 ```
 
 ### FR-DASH-01: Active Academic Term Header
-* **Description:** Queries the `terms` collection where `isActive == true` and displays the current Academic Year and Semester.
-* **Output Format:** `"A.Y. [AY] • [semester] Semester"` (e.g., `"A.Y. 2025-2026 • 1st Semester"`).
+* **Description:** Queries `terms` collection where `isActive == true` and displays current Academic Year and Semester.
+* **Output Format:** `"A.Y. [AY] • [semester] Semester"`.
 
 ### FR-DASH-02: Student Identity Greeting
-* **Description:** Displays the student's full name, registered academic program abbreviation, and current year level.
-* **Data Sources:** `users/{userId}` doc (`firstName`, `lastName`, `programId`, `yearLevel`).
+* **Description:** Displays student full name, program, and year level from `users/{userId}`.
 
 ### FR-DASH-03..06: Quick Metric Summary Cards
-* **FR-DASH-03 (Events Count):** Total count of events marked `status == "present"` or `"partially present"` in `eventAttendees` for the active term.
-* **FR-DASH-04 (Fees Outstanding):** Sum of `balance` field across all non-archived `fees` documents for `studentId == userId` in the active term. Formatted as Philippine Peso (`₱ #,##0.00`).
-* **FR-DASH-05 (Fines Outstanding):** Sum of `balance` from student's parent `fines` document for the active term.
-* **FR-DASH-06 (Clearance Status Card):** Visual status pill (`CLEARED` [Emerald] / `NOT CLEARED` [Rose] / `PENDING REVIEW` [Amber]) derived from `clearanceStatus` document.
+* **FR-DASH-03 (Events Count):** Total count of events marked `status == "present"` or `"partially present"` in `eventAttendees` for the active term across **Levels 1 to 3**.
+* **FR-DASH-04 (Fees Outstanding):** Sum of `balance` across non-archived `fees` documents for the student in the active term across **Levels 2 and 3**.
+* **FR-DASH-05 (Fines Outstanding):** Sum of `balance` from student's parent `fines` documents for the active term across **Levels 2 and 3**.
+* **FR-DASH-06 (Clearance Status Card):** Visual status badge (`CLEARED` / `NOT CLEARED` / `PENDING REVIEW`) derived from `clearanceStatus` documents across **Levels 2 and 3**.
 
 ### FR-DASH-07: Clearance Requirements Widget
-* **Description:** Previews all unresolved items currently registered in `clearanceStatus.blockingItems`.
-* **Action:** Includes a direct CTA button *"Resolve in Clearance"* navigating to `/clearance`.
+* **Description:** Previews unresolved blocking items from `clearanceStatus.blockingItems`. Includes a direct CTA button *"Resolve in Clearance"* navigating to `/clearance`.
 
 ### FR-DASH-08: Event Attendance Widget
-* **Description:** Displays the 2–3 most recent attendance records sorted by `timeIn desc`.
+* **Description:** Displays the 2–3 most recent attendance records sorted by `timeIn desc` across all Level 1–3 organizations.
 
 ---
 
-## 5. Module 3: Events & Attendance Ledger
+## 5. Module 3: Events & Attendance Ledger (Access Levels 1–3)
 
-### FR-EVT-01: Attendance Aggregate Statistics
-
-* **Description:** Computes lifetime or active semester participation statistics for the student.
+### FR-EVT-01: Attendance Aggregate Statistics (Multi-Term Capable)
+* **Description:** Computes participation statistics across all affiliated organizations (Access Levels 1, 2, and 3), with support for term filtering.
 * **Metrics Displayed:**
-  - **Total Events Attended**: Count of attendance records with `status == "present"`.
-  - **Partial Attendance**: Count of attendance records with `status == "partially present"`.
-  - **Infractions / Absences**: Count of fine items in `fines/{fineId}/fineItems` tied to non-attendance.
+  - **Total Events Attended**: Attendance records with `status == "present"`.
+  - **Partial Attendance**: Attendance records with `status == "partially present"`.
+  - **Infractions / Absences**: Fine items in `fines/{fineId}/fineItems` tied to non-attendance (from L2 & L3 orgs).
 
 ---
 
-### FR-EVT-02: Event Attendance History Ledger
-
-* **Description:** Full chronological tabular view of all student attendance records.
-* **Columns:**
-  1. **Event Name:** Title from referenced `events` doc.
-  2. **Event Date:** Scheduled date and time.
-  3. **Venue / Location:** Physical location or online link.
-  4. **Time-In:** Exact timestamp of arrival scan.
-  5. **Time-Out:** Exact timestamp of departure scan.
-  6. **Attendance Status:**
-     - `Present` (Both time-in and time-out logged)
-     - `Partially Present` (Time-in only, time-out missed)
-  7. **Remarks:** Optional note (e.g., cross-program attendance).
+### FR-EVT-02: Event Attendance History Ledger (Multi-Term Capable)
+* **Description:** Chronological tabular view of student attendance records across Access Levels 1 to 3, filterable by Term or viewable in full history.
+* **Columns:** Event Name, Event Date, Venue, Time-In, Time-Out, Status (`Present` | `Partially Present`), Remarks.
 
 ---
 
-## 6. Module 4: Fees Management
+### FR-EVT-03: Events Catalog (Active & Historical, Levels 1–3)
+* **Description:** Allows students to view events scheduled for the active term or browse past events by selecting previous terms, covering Level 1 (Program), Level 2 (College), and Level 3 (Apex) organizations.
+
+---
+
+## 6. Module 4: Fees Management (Access Levels 2–3)
 
 ```
 ┌────────────────────────────────────────────────────────────────────────────┐
-│ Semester Fees (A.Y. 2025-2026 • 1st Semester)                              │
+│ Semester Fees (A.Y. 2025-2026 • 1st Semester)       [ Term Selector ▼ ]     │
 ├────────────────────────────────────────────────────────────────────────────┤
-│ Item                     Type          Due Date     Amount    Status       │
+│ Organization          Item               Due Date     Amount    Status     │
 │ ────────────────────────────────────────────────────────────────────────── │
-│ Org Membership Fee 2025  Membership    Oct 15, 2025 ₱ 250.00  UNPAID ⚠️    │
-│ College T-Shirt          Merchandise   Nov 01, 2025 ₱ 350.00  PAID ✅      │
+│ CET Council (L2)      Org Membership Fee Oct 15, 2025 ₱ 250.00  UNPAID ⚠️  │
+│ USSC Apex (L3)        University Fee     Nov 01, 2025 ₱ 100.00  PAID ✅    │
 ├────────────────────────────────────────────────────────────────────────────┤
-│ ⚠️ You have 1 unpaid fee requirement. [ Head to Clearance to Pay ──► ]     │
+│ ⚠️ You have 1 unpaid fee obligation. [ Pay in Clearance ──► /clearance ]   │
 └────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### FR-FEE-01: Semester Fee Ledger (Active Term)
-
-* **Description:** Displays all assessed student fees for the active academic term.
-* **Data Fields:**
-  - `title`: Fee template name
-  - `feeType`: Categorization (e.g., `"Membership"`, `"Insurance"`, `"Merchandise"`)
-  - `dueDate`: Formatted deadline date
-  - `amount`: Original assessed amount
-  - `paidAmount`: Total verified payments applied
-  - `balance`: Remaining balance (`amount - paidAmount`)
-  - `status`: Badge indicator:
-    - `PAID` (Balance = 0)
-    - `PARTIAL` (Paid amount > 0 and balance > 0)
-    - `UNPAID` (Paid amount = 0)
-    - `PENDING REVIEW` (Proof uploaded by student, awaiting admin approval)
+### FR-FEE-01: Semester Fee Ledger (Active & Historical Term Lookup, Levels 2–3)
+* **Description:** Displays assessed student fees issued by Level 2 (Plus) and Level 3 (Premium) organizations for the selected term (defaulting to active term).
+* **Data Fields:** `organizationName`, `title`, `feeType`, `dueDate`, `amount`, `paidAmount`, `balance`, `status` (`PAID` | `PARTIAL` | `UNPAID` | `PENDING REVIEW`).
 
 ---
 
-### FR-FEE-02: Unpaid Fee Redirect & Payment Link
-
-* **Description:** If any fee document has `status == "unpaid"` or `balance > 0`, the UI displays a callout banner prompting the student to proceed to the clearance payment workflow (`/clearance`).
+### FR-FEE-02: Unpaid Fee Redirect to Clearance Payment Portal
+* **Description:** When outstanding balances exist on `/fees`, renders a banner prompting the student to proceed to the built-in payment portal on `/clearance` (`/clearance`) to settle their obligations.
 
 ---
 
-## 7. Module 5: Fines & Infractions Ledger
+## 7. Module 5: Fines & Infractions Ledger (Access Levels 2–3)
 
 ```
 ┌────────────────────────────────────────────────────────────────────────────┐
-│ Fines & Infractions Summary                                                │
+│ Fines & Infractions Summary (2025-2026 • 1st Sem)   [ Term Selector ▼ ]     │
 │ Total Assessed: ₱ 300.00  •  Waived: ₱ 100.00  •  Outstanding: ₱ 200.00    │
 ├────────────────────────────────────────────────────────────────────────────┤
-│ Infraction / Event          Date Issued   Amount    Status      Action     │
+│ Organization  Infraction / Event        Date Issued   Amount    Status     │
 │ ────────────────────────────────────────────────────────────────────────── │
-│ Absent: General Assembly    Sep 12, 2025  ₱ 100.00  UNPAID      [ Appeal ] │
-│ Partial: College Night      Sep 20, 2025  ₱ 100.00  PENDING ⏳  (In Review)│
-│ Absent: Leadership Seminar  Aug 28, 2025  ₱ 100.00  WAIVED ✨   (Excused)  │
+│ CET Council   Absent: General Assembly  Sep 12, 2025  ₱ 100.00  UNPAID     │
+│ USSC Apex     Absent: Leadership Summit Aug 28, 2025  ₱ 100.00  WAIVED ✨  │
 └────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### FR-FINE-01: Fine Summary & Financial KPIs
-* **Description:** Aggregates parent fine totals for the active term from `fines` document:
-  - **Total Accumulated Fines** (`accumulatedAmount`)
-  - **Total Waived Fines** (`waivedAmount`)
-  - **Total Paid Amount** (`paidAmount`)
-  - **Net Outstanding Balance** (`balance = accumulatedAmount - paidAmount - waivedAmount`)
+### FR-FINE-01: Fine Summary & Financial KPIs (Levels 2–3, Multi-Term Capable)
+* **Description:** Aggregates fine totals for the selected term across all affiliated Level 2 and Level 3 organizations (`accumulatedAmount`, `waivedAmount`, `paidAmount`, `balance`).
 
 ---
 
-### FR-FINE-02: Itemized Fine Infraction History Table
-* **Description:** Lists all individual fine records from subcollection `fines/{fineId}/fineItems`.
-* **Data Fields:**
-  - `fineTypeName`: Name of fine category
-  - `eventName`: Event where infraction occurred
-  - `eventDate`: Date of event
-  - `reason`: System/officer reason string
-  - `amount`: Assessment fee for infraction
-  - `issuedAt`: Issue timestamp
-  - `status`: `Unpaid` | `Paid` | `Waived` | `Pending Appeal`
+### FR-FINE-02: Itemized Fine Infraction History Table (Levels 2–3, Multi-Term Capable)
+* **Description:** Lists individual fine records from `fines/{fineId}/fineItems` for the selected term across Level 2 and Level 3 organizations.
 
 ---
 
 ### FR-FINE-03: Fine Appeal Submission Workflow
-
-* **Description:** Allows a student to contest an infraction (e.g., medical emergency, official academic excuse).
-* **Execution Flow:**
-  1. Student clicks **Appeal** button on an eligible unpaid fine item.
-  2. Modal opens with fine details, event name, and required textarea: `"Reason for Appeal / Justification"`.
-  3. Optional attachment field (excuse letter / medical slip image).
-  4. Student clicks **Submit Appeal**.
-  5. Action executes `submitFineAppealAction(fineItemId, appealNotes)`:
-     - Updates `fineItems/{fineItemId}`: `isPending = true`, `appealNotes = string`, `appealSubmittedAt = now()`.
-     - Updates `clearanceStatus.blockingItems[fineItemId].pendingReview = true`.
-     - Triggers clearance recalculation.
-  6. Toast displays *"Appeal submitted successfully. Awaiting officer review."*
+* **Description:** Allows a student to submit an appeal/justification for an eligible fine item, updating `fineItems/{fineItemId}.isPending = true` and flagging the item under review.
 
 ---
 
-## 8. Module 6: Semester Clearance & Payment Submission
+## 8. Module 6: Semester Clearance & Built-In Payment Portal (Access Levels 2–3)
+
+> [!IMPORTANT]
+> ### 🏛️ Per-Organization Independent Payment Submission Rule
+> Because payment proofs are manually audited and verified by student officers and cashiers **independently per organization** in `coral-ussc`, **payments for fees and fines must be processed separately per organization**. A student cannot combine obligations from different organizations into a single payment proof. The clearance interface provides a dedicated payment flow per organization.
 
 ```
 ┌────────────────────────────────────────────────────────────────────────────┐
-│ SEMESTER CLEARANCE STATUS                                                  │
-│ Status: NOT CLEARED ❌                Progress: 2 of 4 Requirements Cleared│
+│ SEMESTER CLEARANCE & PAYMENT PORTAL (2025-2026 • 1st Sem) [ Term ▼ ]       │
+│ Overall Status: NOT CLEARED ❌        Progress: 2 of 4 Requirements Cleared│
 │ [█████████████████████████░░░░░░░░░░░░░░░░░░░░░░░░░] 50%                  │
 ├────────────────────────────────────────────────────────────────────────────┤
-│ Clearance Checklist                                                        │
-│ 1. 📋 Fees Clearance                                                       │
+│ Clearance Checklist by Organization:                                       │
+│                                                                            │
+│ 🏛️ College Organization (CET Student Council - Level 2)   [ NOT CLEARED ❌]│
 │    • Org Membership Fee: ₱ 250.00 [ UNPAID ❌ ]                            │
-│    • College T-Shirt: ₱ 350.00 [ PAID ✅ ]                                 │
-│ 2. ⚖️ Fines Clearance                                                      │
 │    • General Assembly Absence: ₱ 100.00 [ UNPAID ❌ ]                      │
-│    • Leadership Seminar: ₱ 100.00 [ WAIVED ✅ ]                            │
-├────────────────────────────────────────────────────────────────────────────┤
-│ [ 💳 Make Payment / Upload Proof (2 Unpaid Items Selected) ]               │
+│    [ 💳 Pay CET Council Obligations (₱ 350.00) ──► Opens Org Payment Flow ]│
+│                                                                            │
+│ 👑 University Central Body (USSC Apex - Level 3)           [ CLEARED ✅ ]  │
+│    • University Clearance Fee: ₱ 100.00 [ PAID ✅ ]                        │
+│    (No outstanding obligations for USSC)                                   │
 └────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### FR-CLR-01: Official Clearance Status Indicator & Progress Metric
-
-* **Description:** Displays the student's official clearance state determined by the 3-state evaluation engine.
-* **States:**
-  - **`CLEARED`** (Green): All required fee and fine blocking items have `balance == 0` or `status == "paid"`.
-  - **`NOT CLEARED`** (Red): At least one required blocking item has `balance > 0` with no proof in review.
-  - **`PENDING REVIEW`** (Yellow/Amber): All outstanding items have submitted payment proofs currently awaiting officer verification.
-* **Progress Bar:** Calculated as `(Cleared Items Count / Total Required Items Count) * 100%`.
+### FR-CLR-01: Official Clearance Status Indicator & Progress Metric (Levels 2–3, Multi-Term)
+* **Description:** Displays overall and per-organization clearance statuses evaluated across all affiliated Level 2 (Plus) and Level 3 (Premium) organizations for the selected term.
+* **Overall Status:** `CLEARED` (Green) only if all affiliated organizations are cleared; `NOT CLEARED` (Red) if at least one organization has unresolved obligations; `PENDING REVIEW` (Yellow/Amber) if all remaining obligations are awaiting officer review.
 
 ---
 
-### FR-CLR-02: Categorized Clearance Checklist (Requirements List)
-
-* **Description:** Categorizes all blocking items from `clearanceStatus.blockingItems` into two distinct groups:
-  1. **Fee Requirements:** Group of all fee items with individual balances and review statuses.
-  2. **Fine Requirements:** Group of all infraction items with individual balances and appeal statuses.
+### FR-CLR-02: Categorized Clearance Checklist (Per-Organization Grouping)
+* **Description:** Groups and displays blocking items from `clearanceStatus.blockingItems` strictly segmented by issuing Organization (e.g. College Org vs Apex Council) and categorized by Type (Fees & Fines).
 
 ---
 
-### FR-CLR-03: Multi-Item Payment Submission & Proof Upload Workflow
-
-* **Description:** End-to-end payment submission drawer/modal allowing students to self-pay outstanding obligations via GCash or Bank Transfer.
+### FR-CLR-03: Per-Organization Built-In Payment & Proof Submission Flow
+* **Description:** Enables students to settle outstanding fee and fine obligations with a specific organization through dedicated, organization-scoped payment submissions.
 * **Execution Flow:**
-  1. Student clicks **Make Payment** on the clearance page.
-  2. Modal presents a checklist of all unpaid fees and fines.
-  3. Student selects items to pay (checkboxes update dynamic `"Total Amount to Pay"`).
-  4. Student selects **Payment Method**:
-     - `GCash`: Requires `senderNumber` (`09XXXXXXXXX`) and `referenceNumber`.
-     - `Bank Transfer`: Requires `referenceNumber` and `bankName`.
-     - `Cash (Over-the-Counter)`: Informational instructions.
-  5. Student uploads screenshot proof image to Firebase Storage (`/proofOfPayments/{userId}/{timestamp}.png`).
-  6. Student clicks **Submit Payment Proof**.
-  7. Server Action `submitPaymentProofAction` executes:
-     - Creates `proofOfPayments` document with `status = "pending"`, `itemKeys = [selectedIds]`.
-     - For each selected item, sets `clearanceStatus.blockingItems[id].pendingReview = true`.
-     - Calls `recalculateClearanceStatus(userId)`.
-  8. Clearance status immediately updates to `PENDING REVIEW ⏳`.
+  1. Student clicks **"Pay [Org Name] Obligations"** on the specific organization's clearance card.
+  2. The payment drawer/modal opens **strictly scoped to that organization (`orgId`)**, listing only the unpaid fee and fine items belonging to that organization.
+  3. Student selects items to pay within that organization (dynamic total calculation for that org).
+  4. Student selects **Payment Method** (`GCash`, `Bank Transfer`, or `Cash/Over-the-Counter`).
+  5. Student enters payment reference / sender number and uploads receipt proof image to Firebase Storage (`/proofOfPayments/{orgId}/{userId}/{timestamp}.png`).
+  6. Server Action `submitPaymentProofAction` executes with `{ orgId, selectedItemKeys, amount, ... }`:
+     - Creates `proofOfPayments` document with `orgId: selectedOrgId`, `status: "pending"`, `itemKeys: selectedItemKeys`.
+     - Updates `clearanceStatus.blockingItems[id].pendingReview = true` for each selected item under that organization.
+     - Updates corresponding `fees` documents to `status = "pending"` and `fineItems` documents to `isPending = true`.
+     - Calls `recalculateClearanceStatus(userId, orgId, term)` to update the organization's clearance status to `"pending"`.
+  7. That organization's clearance status immediately transitions to `PENDING REVIEW ⏳` awaiting verification by that organization's officers in `coral-ussc`.
+
 
 ---
 
@@ -329,7 +297,10 @@ This Functional Requirements Specification (FRS) establishes the authoritative t
 | Concern | Constraint / Standard |
 |---|---|
 | **Data Ownership** | Every read/write query filters by `userId` extracted from the cryptographically verified session cookie. Client-supplied student IDs are never trusted. |
-| **Silent Audit Logging** | All mutations (payment uploads, appeals, profile updates) and security failures are logged fire-and-forget (`void logAction`) to `audit_logs`. |
-| **Response Latency** | Read use cases utilize Next.js Server Function caching (`'use cache'`) with user-scoped tags (`fees-${userId}`, `fines-${userId}`). |
+| **Operational Scoping** | Events & Attendance span Access Levels 1 to 3; Fees, Fines, and Clearance span Access Levels 2 and 3 only. |
+| **Silent Audit Logging** | All mutations (payment uploads, fine appeals, profile updates) and security failures are logged fire-and-forget (`void logAction`) to `audit_logs`. |
+| **Response Latency** | Read use cases utilize Next.js Server Function caching (`'use cache'`) with user-scoped and term-scoped tags (`fees-${userId}`, `fines-${userId}`, `terms-all`). |
 | **Resilience & Soft Deletes** | No physical document deletion occurs; records are soft-deleted with `isDeleted: true` or `isArchived: true`. |
 | **Security Boundaries** | Firebase Admin SDK (`adminDb`, `adminAuth`) is restricted to server-side code (`usecases/` and `src/lib/firebase/admin.ts`). |
+
+
