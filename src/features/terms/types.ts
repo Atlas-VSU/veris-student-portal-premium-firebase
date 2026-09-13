@@ -16,3 +16,9 @@ export interface Term {
     updatedAt: Timestamp
   }
 }
+
+export interface TermFilter {
+  academicYear?: string
+  semester?: AcademicSemester | string
+}
+
