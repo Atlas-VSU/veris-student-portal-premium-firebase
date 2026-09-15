@@ -4,22 +4,22 @@ import { getFirestore } from 'firebase-admin/firestore'
 
 const app = getApps().length === 0
   ? initializeApp({
-      credential: cert({
-        projectId: process.env.FIREBASE_PROJECT_ID,
-        clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-        privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
-      }),
-    })
+    credential: cert({
+      projectId: process.env.FIREBASE_PROJECT_ID,
+      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+      privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
+    }),
+  })
   : getApps()[0]
 
 const auth = getAuth(app)
 const db = getFirestore(app)
 
 async function provisionStudent() {
-  const studentUid = '00NsE1l3lMXJ132z0Qs7'
-  const email = '15-1-00535@dummy.edu.ph'
+  const studentUid = 'iwIZkyEZo5OQXypKc6Nb'
+  const email = '12-1-01488@dummy.edu.ph'
   const password = 'studentPass2026'
-  const displayName = 'Grace Valdez'
+  const displayName = 'Dexter Valdez'
 
   console.log(`\n=== Provisioning Student User ===`)
   console.log(`Target UID: ${studentUid}`)
@@ -44,7 +44,7 @@ async function provisionStudent() {
         const userByEmail = await auth.getUserByEmail(email)
         console.log(`! User exists with email ${email} but different UID (${userByEmail.uid}). Deleting mismatched user...`)
         await auth.deleteUser(userByEmail.uid)
-      } catch {}
+      } catch { }
 
       console.log(`+ Creating new Auth user with exact UID ${studentUid}...`)
       await auth.createUser({
@@ -75,16 +75,16 @@ async function provisionStudent() {
   } else {
     console.log(`+ Creating missing Firestore document users/${studentUid}...`)
     await userDocRef.set({
-      studentId: '15-1-00535',
+      studentId: '12-1-01488',
       email,
-      firstName: 'Grace',
+      firstName: 'Dexter',
       lastName: 'Valdez',
       role: 'user',
       status: 'approved',
       isDeleted: false,
       yearLevel: '4',
-      program: 'Bachelor of Secondary Education',
-      faculty: 'Faculty of Teacher Education',
+      program: 'Bachelor of Science in Computer Science',
+      faculty: 'Faculty of Computing',
       createdAt: new Date(),
       updatedAt: new Date(),
     })
