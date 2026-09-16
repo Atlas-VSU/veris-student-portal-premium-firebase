@@ -32,7 +32,6 @@ export function LoginForm() {
       const result = await signIn({ email, password })
 
       if (result.ok) {
-        // Fast client navigation to intended destination or home
         router.push(redirectUrl)
         router.refresh()
       } else {

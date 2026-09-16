@@ -35,10 +35,8 @@ export function AuthProvider({
   }, [])
 
   useEffect(() => {
-    // Listen to Firebase client auth state changes
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
-        // Sync with server session and fetch full profile
         await refreshUser()
       } else {
         setUser(null)

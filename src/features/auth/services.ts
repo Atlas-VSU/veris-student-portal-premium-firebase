@@ -7,10 +7,6 @@ export function validateSessionUser(user: Partial<SessionUser>): boolean {
   return Boolean(user.uid && user.email)
 }
 
-/**
- * Authenticates student using Firebase Client SDK, extracts fresh idToken,
- * and creates secure HTTP-only session cookie via Server Action.
- */
 export async function signInWithCredentials(
   credentials: LoginCredentials
 ): Promise<ActionResult<{ user: SessionUser }>> {
@@ -25,8 +21,7 @@ export async function signInWithCredentials(
     const result = await createSessionAction(idToken)
 
     if (!result.ok) {
-      // If server session validation failed (e.g. account pending or deleted), clear client auth
-      await firebaseSignOut(auth).catch(() => {})
+      await firebaseSignOut(auth).catch(() => { })
       return result
     }
 
@@ -34,7 +29,6 @@ export async function signInWithCredentials(
   } catch (error) {
     console.error('[Auth] Sign in failed:', error)
     const message = error instanceof Error ? error.message : 'Invalid student credentials.'
-    // Firebase auth error code translation
     if (
       message.includes('auth/invalid-credential') ||
       message.includes('auth/user-not-found') ||
@@ -57,7 +51,7 @@ export async function signOutUser(): Promise<ActionResult> {
   try {
     await destroySessionAction()
   } finally {
-    await firebaseSignOut(auth).catch(() => {})
+    await firebaseSignOut(auth).catch(() => { })
   }
   return { ok: true, data: undefined }
 }

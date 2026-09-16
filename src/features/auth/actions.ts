@@ -5,16 +5,13 @@ import { adminAuth, adminDb } from '@/lib/firebase/admin'
 import { logAction } from './usecases/log-action.usecase'
 import type { ActionResult, SessionUser } from './types'
 
-const SESSION_DURATION_MS = 60 * 60 * 24 * 14 * 1000 // 14 days
+const SESSION_DURATION_MS = 60 * 60 * 24 * 14 * 1000
 
-// Called after client-side signInWithEmailAndPassword() returns an idToken
 export async function createSessionAction(idToken: string): Promise<ActionResult<{ user: SessionUser }>> {
   try {
-    // 1. Verify the idToken first to extract student UID
     const decodedToken = await adminAuth.verifyIdToken(idToken)
     const uid = decodedToken.uid
 
-    // 2. Precondition check: Validate student record exists, is active, and is approved
     const userDoc = await adminDb.collection('users').doc(uid).get()
     if (!userDoc.exists) {
       void logAction({
@@ -47,7 +44,6 @@ export async function createSessionAction(idToken: string): Promise<ActionResult
       return { ok: false, error: 'Student account is pending approval.' }
     }
 
-    // 3. Create session cookie
     const sessionCookie = await adminAuth.createSessionCookie(idToken, {
       expiresIn: SESSION_DURATION_MS,
     })
@@ -57,8 +53,7 @@ export async function createSessionAction(idToken: string): Promise<ActionResult
       maxAge: SESSION_DURATION_MS / 1000,
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax', // Lax allows smooth deep-link redirects while maintaining CSRF safety
-      path: '/',
+      sameSite: 'lax',
     })
 
     const sessionUser: SessionUser = {
@@ -96,7 +91,6 @@ export async function createSessionAction(idToken: string): Promise<ActionResult
   }
 }
 
-// Called on sign-out — revokes refresh tokens so cookie cannot be reused
 export async function destroySessionAction(): Promise<ActionResult> {
   const cookieStore = await cookies()
   const session = cookieStore.get('__session')?.value
@@ -119,7 +113,6 @@ export async function destroySessionAction(): Promise<ActionResult> {
   return { ok: true, data: undefined }
 }
 
-// Resolves current session user from the __session cookie on the server
 export async function getSessionUserAction(): Promise<ActionResult<SessionUser | null>> {
   try {
     const cookieStore = await cookies()
