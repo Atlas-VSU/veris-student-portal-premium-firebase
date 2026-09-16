@@ -40,12 +40,12 @@ export async function getEventsService(userId?: string, filter?: TermFilter): Pr
   // Filter events based on student's affiliation & Access Level (1, 2, 3)
   const scopedEvents = rawEvents.filter((event) => {
     const level = event.accessLevelEvent ?? 3
-    if (level === 3) return true // Campus / Apex level (all students)
+    if (level === 3) return true // Campus(all students)
 
     if (!affiliation) return true // If no affiliation context, default to open
 
     if (level === 2) {
-      // College / Faculty level
+      // Faculty level
       if (event.facultyId && affiliation.facultyId && event.facultyId !== affiliation.facultyId) {
         return false
       }
@@ -53,7 +53,7 @@ export async function getEventsService(userId?: string, filter?: TermFilter): Pr
     }
 
     if (level === 1) {
-      // Program level
+      // Department level
       if (event.programId && affiliation.programId && event.programId !== affiliation.programId) {
         return false
       }
