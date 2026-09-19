@@ -1,8 +1,15 @@
 import { adminAuth } from "@/lib/firebase/admin";
+import { RequestCookie } from "next/dist/compiled/@edge-runtime/cookies";
 import { cookies } from "next/headers";
 const SESSION_DURATION_MS = 60 * 60 * 24 * 14 * 1000;
 
-export const createSessionUsecase = async (idToken : string) => {
+export interface session{
+    ok : boolean,
+    data? : RequestCookie | string,
+    error? : any
+}
+
+export const createSessionUsecase = async (idToken : string) :  Promise<session>  =>{
     try{
          const sessionCookie = await adminAuth.createSessionCookie(idToken, {
                     expiresIn : SESSION_DURATION_MS
@@ -19,12 +26,9 @@ export const createSessionUsecase = async (idToken : string) => {
                 return { 
                     ok : true,
                     data : undefined
-                }
+                };
     }
-    catch(e){
-        return {
-            ok : false,
-            error : 'Failed to create session'
-        }
+    catch{
+        throw new Error("Failed to log-in!");
     }
 }
