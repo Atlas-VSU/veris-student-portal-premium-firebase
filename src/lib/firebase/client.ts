@@ -40,5 +40,3 @@ if (typeof window !== 'undefined') {
 }
 
 export { appCheck }
-
-

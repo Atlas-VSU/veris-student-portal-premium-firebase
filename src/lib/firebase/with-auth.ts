@@ -1,4 +1,5 @@
 import 'server-only'
+
 import { cookies } from 'next/headers'
 import { adminAuth } from './admin'
 import { logAction } from '@/features/auth/usecases/log-action.usecase'
