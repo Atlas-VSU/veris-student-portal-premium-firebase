@@ -4,10 +4,34 @@ import React, { useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '../hooks/use-auth'
 
+const REDIRECT_BASE_URL = 'https://student-portal.invalid'
+
+function getSafeRedirectPath(candidate: string | null): string {
+  if (
+    !candidate ||
+    !candidate.startsWith('/') ||
+    candidate.startsWith('//') ||
+    candidate.includes('\\')
+  ) {
+    return '/'
+  }
+
+  try {
+    const url = new URL(candidate, REDIRECT_BASE_URL)
+    if (url.origin !== REDIRECT_BASE_URL) {
+      return '/'
+    }
+
+    return `${url.pathname}${url.search}${url.hash}`
+  } catch {
+    return '/'
+  }
+}
+
 export function LoginForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const redirectUrl = searchParams.get('redirect') || '/'
+  const redirectUrl = getSafeRedirectPath(searchParams.get('redirect'))
 
   const { signIn } = useAuth()
 
