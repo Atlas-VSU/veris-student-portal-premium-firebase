@@ -1,9 +1,8 @@
 import { getActiveTermUseCase } from '@/features/terms/usecases/get-active-term.usecase'
 import { getActiveEventsUseCase } from './usecases/get-active-events.usecase'
 import { getEventByIdUseCase } from './usecases/get-event-by-id.usecase'
-import { getStudentAffiliationUseCase } from '@/features/profile/usecases/get-student-affiliation.usecase'
 import { toSafeDate } from '@/lib/date-format'
-import type { StudentAffiliation } from '@/features/profile/usecases/get-student-affiliation.usecase'
+import type { SessionUser } from '@/features/auth/types'
 import type { Event, EventStatus, TermFilter } from './types'
 
 export function determineEventStatus(dateMillis: number, manuallyCompleted = false): EventStatus {
@@ -18,7 +17,7 @@ export function determineEventStatus(dateMillis: number, manuallyCompleted = fal
 
 function canStudentViewEvent(
   event: Event,
-  affiliation: StudentAffiliation | null
+  student: SessionUser
 ): boolean {
   if (event.accessLevelEvent === 3) {
     return true
@@ -27,16 +26,16 @@ function canStudentViewEvent(
   if (event.accessLevelEvent === 2) {
     return Boolean(
       event.facultyId &&
-      affiliation?.facultyId &&
-      event.facultyId === affiliation.facultyId
+      student.facultyId &&
+      event.facultyId === student.facultyId
     )
   }
 
   if (event.accessLevelEvent === 1) {
     return Boolean(
       event.programId &&
-      affiliation?.programId &&
-      event.programId === affiliation.programId
+      student.programId &&
+      event.programId === student.programId
     )
   }
 
@@ -57,7 +56,7 @@ function presentEvent(event: Event): Event {
   }
 }
 
-export async function getEventsService(userId: string, filter?: TermFilter): Promise<Event[]> {
+export async function getEventsService(user: SessionUser, filter?: TermFilter): Promise<Event[]> {
   let academicYear = filter?.academicYear
   let semester = filter?.semester
 
@@ -70,33 +69,27 @@ export async function getEventsService(userId: string, filter?: TermFilter): Pro
     }
   }
 
-  const [rawEvents, affiliation] = await Promise.all([
-    getActiveEventsUseCase({
-      academicYear,
-      semester,
-    }),
-    getStudentAffiliationUseCase(userId),
-  ])
+  const rawEvents = await getActiveEventsUseCase({
+    academicYear,
+    semester,
+  })
 
   return rawEvents
-    .filter((event) => canStudentViewEvent(event, affiliation))
+    .filter((event) => canStudentViewEvent(event, user))
     .map(presentEvent)
 }
 
-export async function getActiveEventsService(userId: string): Promise<Event[]> {
-  return getEventsService(userId)
+export async function getActiveEventsService(user: SessionUser): Promise<Event[]> {
+  return getEventsService(user)
 }
 
 export async function getEventByIdService(
-  userId: string,
+  user: SessionUser,
   eventId: string
 ): Promise<Event | null> {
-  const [event, affiliation] = await Promise.all([
-    getEventByIdUseCase({ eventId }),
-    getStudentAffiliationUseCase(userId),
-  ])
+  const event = await getEventByIdUseCase({ eventId })
 
-  if (!event || !canStudentViewEvent(event, affiliation)) {
+  if (!event || !canStudentViewEvent(event, user)) {
     return null
   }
 

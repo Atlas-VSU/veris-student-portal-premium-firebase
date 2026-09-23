@@ -5,26 +5,26 @@ import { getEventsService, getActiveEventsService, getEventByIdService } from '.
 import type { ActionResult, Event, TermFilter } from './types'
 
 export async function getEventsAction(filter?: TermFilter): Promise<ActionResult<Event[]>> {
-  return withAuth('events:list', async (userId) => {
-    const events = await getEventsService(userId, filter)
+  return withAuth('events:list', async (_userId, user) => {
+    const events = await getEventsService(user, filter)
     return { ok: true, data: events }
   })
 }
 
 export async function getActiveEventsAction(): Promise<ActionResult<Event[]>> {
-  return withAuth('events:listActive', async (userId) => {
-    const events = await getActiveEventsService(userId)
+  return withAuth('events:listActive', async (_userId, user) => {
+    const events = await getActiveEventsService(user)
     return { ok: true, data: events }
   })
 }
 
 export async function getEventByIdAction(eventId: string): Promise<ActionResult<Event | null>> {
-  return withAuth('events:getById', async (userId) => {
+  return withAuth('events:getById', async (_userId, user) => {
     if (!eventId.trim()) {
       return { ok: false, error: 'Event ID is required.' }
     }
 
-    const event = await getEventByIdService(userId, eventId)
+    const event = await getEventByIdService(user, eventId)
     return { ok: true, data: event }
   })
 }
