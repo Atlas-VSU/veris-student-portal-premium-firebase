@@ -52,6 +52,11 @@ export interface AttendanceStats {
   pendingAppealsCount?: number
 }
 
+export interface AttendanceOverview {
+  history: AttendanceHistoryItem[]
+  stats: AttendanceStats
+}
+
 export interface AttendanceFineParent {
   id: string
   orgId: string

@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { getMyAttendanceAction, getMyAttendanceStatsAction } from '../actions'
+import { getMyAttendanceOverviewAction } from '../actions'
 import type { AttendanceHistoryItem, AttendanceStats, TermFilter } from '../types'
 import { TermSelector } from '@/features/terms/components/term-selector'
 import { AttendanceStatsCards } from './attendance-stats-cards'
@@ -19,15 +19,12 @@ export function AttendanceLedgerView() {
 
     async function load() {
       try {
-        const [historyRes, statsRes] = await Promise.all([
-          getMyAttendanceAction(selectedTerm),
-          getMyAttendanceStatsAction(selectedTerm),
-        ])
+        const result = await getMyAttendanceOverviewAction(selectedTerm)
 
         if (!isMounted) return
 
-        setHistoryItems(historyRes.ok && historyRes.data ? historyRes.data : [])
-        setStats(statsRes.ok && statsRes.data ? statsRes.data : null)
+        setHistoryItems(result.ok ? result.data.history : [])
+        setStats(result.ok ? result.data.stats : null)
       } catch (err) {
         console.error('Failed to load attendance ledger data:', err)
         if (isMounted) {

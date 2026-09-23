@@ -3,11 +3,12 @@ import { getMyAttendanceUseCase } from './usecases/get-my-attendance.usecase'
 import { getMyAttendanceFinesUseCase } from './usecases/get-my-attendance-fines.usecase'
 import { getAttendanceFineItemsUseCase } from './usecases/get-attendance-fine-items.usecase'
 import { toSafeDate, toIsoString } from '@/lib/date-format'
+import { calculateAttendanceStats, matchesTerm } from './calculations'
 import type {
   AttendanceRecord,
   AttendanceStatus,
   AttendanceHistoryItem,
-  AttendanceStats,
+  AttendanceOverview,
   TermFilter,
 } from './types'
 
@@ -64,26 +65,29 @@ export async function getMyAttendanceHistoryService(
     fineByEventId.set(fine.eventId, fine)
   })
 
-  const eventCache = new Map<string, Awaited<ReturnType<typeof getEventByIdUseCase>>>()
-  async function getCachedEvent(eventId: string) {
-    if (!eventId) return null
-    if (!eventCache.has(eventId)) {
-      const ev = await getEventByIdUseCase({ eventId })
-      eventCache.set(eventId, ev)
-    }
-    return eventCache.get(eventId) || null
-  }
+  const eventIds = new Set<string>()
+  records.forEach((record) => {
+    if (record.eventId) eventIds.add(record.eventId)
+  })
+  absenceFines.forEach((fine) => {
+    if (fine.eventId) eventIds.add(fine.eventId)
+  })
+
+  const eventEntries = await Promise.all(
+    [...eventIds].map(async (eventId) => {
+      const event = await getEventByIdUseCase({ eventId })
+      return [eventId, event] as const
+    })
+  )
+  const eventById = new Map(eventEntries)
 
   const unifiedList: AttendanceHistoryItem[] = []
   const attendedEventIds = new Set<string>()
 
   // 1. Process Check-in records (Present / Partially Present)
   for (const record of records) {
-    const event = await getCachedEvent(record.eventId)
-    if (filter?.academicYear && event?.academicYear && event.academicYear !== filter.academicYear) {
-      continue
-    }
-    if (filter?.semester && event?.semester && event.semester !== filter.semester) {
+    const event = eventById.get(record.eventId) || null
+    if (!matchesTerm(filter, event?.academicYear, event?.semester)) {
       continue
     }
 
@@ -118,11 +122,8 @@ export async function getMyAttendanceHistoryService(
       continue // Already captured above
     }
 
-    const event = await getCachedEvent(fine.eventId)
-    if (filter?.academicYear && event?.academicYear && event.academicYear !== filter.academicYear) {
-      continue
-    }
-    if (filter?.semester && event?.semester && event.semester !== filter.semester) {
+    const event = eventById.get(fine.eventId) || null
+    if (!matchesTerm(filter, fine.academicYear, fine.semester)) {
       continue
     }
 
@@ -166,20 +167,13 @@ export async function getRecentAttendanceService(
   return history.slice(0, limit)
 }
 
-export async function getMyAttendanceStatsService(
+export async function getMyAttendanceOverviewService(
   userId: string,
   filter?: TermFilter
-): Promise<AttendanceStats> {
+): Promise<AttendanceOverview> {
   const history = await getMyAttendanceHistoryService(userId, filter)
-  const presentCount = history.filter((item) => item.status === 'present').length
-  const partialCount = history.filter((item) => item.status === 'partially present').length
-  const absences = history.filter((item) => item.status === 'absent')
-
   return {
-    presentCount,
-    partialCount,
-    totalAttended: presentCount,
-    absencesCount: absences.length,
-    pendingAppealsCount: absences.filter((item) => item.isPendingAppeal).length,
+    history,
+    stats: calculateAttendanceStats(history),
   }
 }
