@@ -51,3 +51,21 @@ export interface AttendanceStats {
   absencesCount: number
   pendingAppealsCount?: number
 }
+
+export interface AttendanceFineParent {
+  id: string
+  orgId: string
+  orgName?: string
+  academicYear?: string
+  semester?: string
+}
+
+export interface AttendanceFineItem {
+  id: string
+  eventId: string
+  eventName?: string
+  eventDate?: unknown
+  amount: number
+  reason?: string
+  isPending: boolean
+}

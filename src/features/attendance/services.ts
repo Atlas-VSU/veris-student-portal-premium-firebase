@@ -1,8 +1,7 @@
-import { adminDb } from '@/lib/firebase/admin'
 import { getEventByIdUseCase } from '@/features/events/usecases/get-event-by-id.usecase'
-import { getOrganizationsMapUseCase } from '@/features/events/usecases/get-organizations-map.usecase'
 import { getMyAttendanceUseCase } from './usecases/get-my-attendance.usecase'
-import { getAttendanceStatsUseCase } from './usecases/get-attendance-stats.usecase'
+import { getMyAttendanceFinesUseCase } from './usecases/get-my-attendance-fines.usecase'
+import { getAttendanceFineItemsUseCase } from './usecases/get-attendance-fine-items.usecase'
 import { toSafeDate, toIsoString } from '@/lib/date-format'
 import type {
   AttendanceRecord,
@@ -26,64 +25,38 @@ interface FineItemInfo {
   reason?: string
   isPending?: boolean
   orgId: string
+  orgName?: string
   academicYear?: string
   semester?: string
 }
 
 async function getStudentAbsenceFineItems(userId: string, filter?: TermFilter): Promise<FineItemInfo[]> {
-  const fineItems: FineItemInfo[] = []
-  try {
-    let finesQuery = adminDb.collection('fines').where('userId', '==', userId)
+  const fineParents = await getMyAttendanceFinesUseCase({ userId, filter })
+  const itemGroups = await Promise.all(
+    fineParents.map(async (fine) => {
+      const items = await getAttendanceFineItemsUseCase({ fineId: fine.id })
 
-    if (filter?.academicYear) {
-      finesQuery = finesQuery.where('academicYear', '==', filter.academicYear)
-    }
-    if (filter?.semester) {
-      finesQuery = finesQuery.where('semester', '==', filter.semester)
-    }
+      return items.map((item) => ({
+        ...item,
+        parentFineId: fine.id,
+        orgId: fine.orgId,
+        orgName: fine.orgName,
+        academicYear: fine.academicYear,
+        semester: fine.semester,
+      }))
+    })
+  )
 
-    const finesSnapshot = await finesQuery.get()
-
-    for (const fineDoc of finesSnapshot.docs) {
-      const fineData = fineDoc.data()
-      if (fineData.isArchived === true || fineData.metadata?.isArchived === true) {
-        continue
-      }
-
-      const itemsSnapshot = await fineDoc.ref.collection('fineItems').get()
-      itemsSnapshot.docs.forEach((itemDoc) => {
-        const itemData = itemDoc.data()
-        if (itemData.eventId && !itemData.isArchived && !itemData.isWaived) {
-          fineItems.push({
-            id: itemDoc.id,
-            parentFineId: fineDoc.id,
-            eventId: itemData.eventId,
-            eventName: itemData.eventName,
-            eventDate: itemData.eventDate,
-            amount: itemData.amount ?? 0,
-            reason: itemData.reason,
-            isPending: itemData.isPending === true,
-            orgId: fineData.orgId,
-            academicYear: fineData.academicYear,
-            semester: fineData.semester,
-          })
-        }
-      })
-    }
-  } catch (err) {
-    console.error('Failed to fetch student fine items in getStudentAbsenceFineItems:', err)
-  }
-  return fineItems
+  return itemGroups.flat()
 }
 
 export async function getMyAttendanceHistoryService(
   userId: string,
   filter?: TermFilter
 ): Promise<AttendanceHistoryItem[]> {
-  const [records, absenceFines, orgMap] = await Promise.all([
+  const [records, absenceFines] = await Promise.all([
     getMyAttendanceUseCase({ userId }),
     getStudentAbsenceFineItems(userId, filter),
-    getOrganizationsMapUseCase(),
   ])
 
   const fineByEventId = new Map<string, FineItemInfo>()
@@ -117,7 +90,7 @@ export async function getMyAttendanceHistoryService(
     attendedEventIds.add(record.eventId)
     const fineInfo = fineByEventId.get(record.eventId)
     const orgId = event?.orgId || record.orgId
-    const orgName = orgMap.get(orgId)?.name || 'University Organization'
+    const orgName = event?.orgName || fineInfo?.orgName || 'University Organization'
 
     unifiedList.push({
       id: record.id,
@@ -154,7 +127,7 @@ export async function getMyAttendanceHistoryService(
     }
 
     const orgId = event?.orgId || fine.orgId
-    const orgName = orgMap.get(orgId)?.name || 'University Organization'
+    const orgName = event?.orgName || fine.orgName || 'University Organization'
     const eventDateStr = event?.date || toIsoString(fine.eventDate)
 
     unifiedList.push({
@@ -197,9 +170,16 @@ export async function getMyAttendanceStatsService(
   userId: string,
   filter?: TermFilter
 ): Promise<AttendanceStats> {
-  return getAttendanceStatsUseCase({
-    userId,
-    academicYear: filter?.academicYear,
-    semester: filter?.semester,
-  })
+  const history = await getMyAttendanceHistoryService(userId, filter)
+  const presentCount = history.filter((item) => item.status === 'present').length
+  const partialCount = history.filter((item) => item.status === 'partially present').length
+  const absences = history.filter((item) => item.status === 'absent')
+
+  return {
+    presentCount,
+    partialCount,
+    totalAttended: presentCount + partialCount,
+    absencesCount: absences.length,
+    pendingAppealsCount: absences.filter((item) => item.isPendingAppeal).length,
+  }
 }
