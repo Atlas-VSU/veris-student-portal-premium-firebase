@@ -1,58 +1,87 @@
-import { signInWithEmailAndPassword, signOut as firebaseSignOut } from 'firebase/auth'
-import { auth } from '@/lib/firebase/client'
-import { createSessionAction, destroySessionAction } from './actions'
-import type { ActionResult, LoginCredentials, SessionUser } from './types'
+import 'server-only'
 
-export function validateSessionUser(user: Partial<SessionUser>): boolean {
-  return Boolean(user.uid && user.email)
+import { adminAuth } from '@/lib/firebase/admin'
+import { getSessionUserUseCase } from './usecases/get-session-user.usecase'
+import type { SessionUser, SessionUserRecord } from './types'
+
+export const SESSION_DURATION_MS = 60 * 60 * 24 * 14 * 1000
+
+export const SESSION_COOKIE_OPTIONS = {
+  maxAge: SESSION_DURATION_MS / 1000,
+  httpOnly: true,
+  secure: process.env.NODE_ENV === 'production',
+  sameSite: 'strict',
+  path: '/',
+} as const
+
+export class StudentSessionError extends Error {
+  constructor(
+    message: string,
+    readonly userId: string
+  ) {
+    super(message)
+    this.name = 'StudentSessionError'
+  }
 }
 
-export async function signInWithCredentials(
-  credentials: LoginCredentials
-): Promise<ActionResult<{ user: SessionUser }>> {
-  try {
-    const userCredential = await signInWithEmailAndPassword(
-      auth,
-      credentials.email.trim(),
-      credentials.password
+function requireEligibleStudent(
+  record: SessionUserRecord | null,
+  userId: string,
+  fallbackEmail = ''
+): SessionUser {
+  if (!record) {
+    throw new StudentSessionError(
+      'Student account record not found. Please contact administration.',
+      userId
     )
+  }
 
-    const idToken = await userCredential.user.getIdToken(true)
-    const result = await createSessionAction(idToken)
+  if (record.isDeleted) {
+    throw new StudentSessionError('This student account has been deactivated.', userId)
+  }
 
-    if (!result.ok) {
-      await firebaseSignOut(auth).catch(() => { })
-      return result
-    }
+  if (record.status !== 'approved') {
+    throw new StudentSessionError('Student account is pending approval.', userId)
+  }
 
-    return result
-  } catch (error) {
-    console.error('[Auth] Sign in failed:', error)
-    const message = error instanceof Error ? error.message : 'Invalid student credentials.'
-    if (
-      message.includes('auth/invalid-credential') ||
-      message.includes('auth/user-not-found') ||
-      message.includes('auth/wrong-password') ||
-      message.includes('auth/invalid-email')
-    ) {
-      return { ok: false, error: 'Invalid student credentials.' }
-    }
-    if (message.includes('auth/too-many-requests')) {
-      return { ok: false, error: 'Too many failed attempts. Please try again in a few minutes.' }
-    }
-    return { ok: false, error: message.startsWith('Firebase:') ? 'Invalid student credentials.' : message }
+  if (record.role !== 'user') {
+    throw new StudentSessionError('This portal is available to student accounts only.', userId)
+  }
+
+  return {
+    uid: record.uid,
+    email: record.email || fallbackEmail,
+    firstName: record.firstName,
+    lastName: record.lastName,
+    studentId: record.studentId,
+    role: 'user',
+    programId: record.programId,
+    facultyId: record.facultyId,
+    orgId: record.orgId,
+    yearLevel: record.yearLevel,
+    status: 'approved',
+    corURL: record.corURL,
   }
 }
 
-/**
- * Terminates server session cookie and client Firebase state.
- */
-export async function signOutUser(): Promise<ActionResult> {
-  try {
-    await destroySessionAction()
-  } finally {
-    await firebaseSignOut(auth).catch(() => { })
-  }
-  return { ok: true, data: undefined }
+export async function createStudentSessionService(idToken: string): Promise<{
+  sessionCookie: string
+  user: SessionUser
+}> {
+  const decodedToken = await adminAuth.verifyIdToken(idToken)
+  const record = await getSessionUserUseCase({ userId: decodedToken.uid })
+  const user = requireEligibleStudent(record, decodedToken.uid, decodedToken.email)
+  const sessionCookie = await adminAuth.createSessionCookie(idToken, {
+    expiresIn: SESSION_DURATION_MS,
+  })
+
+  return { sessionCookie, user }
 }
 
+export async function getSessionUserService(
+  userId: string,
+  fallbackEmail = ''
+): Promise<SessionUser> {
+  const record = await getSessionUserUseCase({ userId })
+  return requireEligibleStudent(record, userId, fallbackEmail)
+}

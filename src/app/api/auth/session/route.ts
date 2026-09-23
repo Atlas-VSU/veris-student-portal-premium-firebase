@@ -1,31 +1,45 @@
 import { NextResponse } from 'next/server'
-import { adminAuth } from '@/lib/firebase/admin'
-
-const SESSION_DURATION_MS = 60 * 60 * 24 * 14 * 1000 // 14 days
+import {
+  createStudentSessionService,
+  SESSION_COOKIE_OPTIONS,
+  StudentSessionError,
+} from '@/features/auth/services'
+import { logAction } from '@/features/auth/usecases/log-action.usecase'
 
 export async function POST(request: Request) {
   try {
-    const { idToken } = await request.json()
-    if (!idToken) {
+    const body: unknown = await request.json()
+    const idToken =
+      typeof body === 'object' && body !== null && 'idToken' in body
+        ? (body as { idToken?: unknown }).idToken
+        : undefined
+
+    if (typeof idToken !== 'string' || !idToken) {
       return NextResponse.json({ ok: false, error: 'idToken is required.' }, { status: 400 })
     }
 
-    const sessionCookie = await adminAuth.createSessionCookie(idToken, {
-      expiresIn: SESSION_DURATION_MS,
-    })
+    const { sessionCookie, user } = await createStudentSessionService(idToken)
 
     const response = NextResponse.json({ ok: true })
-    response.cookies.set('__session', sessionCookie, {
-      maxAge: SESSION_DURATION_MS / 1000,
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      path: '/',
-    })
+    response.cookies.set('__session', sessionCookie, SESSION_COOKIE_OPTIONS)
+
+    void logAction({ userId: user.uid, action: 'auth:signin', success: true })
 
     return response
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Failed to create session.'
-    return NextResponse.json({ ok: false, error: message }, { status: 500 })
+    const userId = error instanceof StudentSessionError ? error.userId : 'unknown'
+    const auditMessage = error instanceof Error ? error.message : 'Failed to create session.'
+    void logAction({ userId, action: 'auth:signin', success: false, error: auditMessage })
+
+    return NextResponse.json(
+      {
+        ok: false,
+        error:
+          error instanceof StudentSessionError
+            ? error.message
+            : 'Failed to establish session. Please try again.',
+      },
+      { status: error instanceof StudentSessionError ? 403 : 401 }
+    )
   }
 }

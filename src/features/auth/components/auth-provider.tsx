@@ -3,7 +3,7 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react'
 import { onAuthStateChanged } from 'firebase/auth'
 import { auth } from '@/lib/firebase/client'
-import { signInWithCredentials, signOutUser } from '../services'
+import { signInWithCredentials, signOutUser } from '../client'
 import { getSessionUserAction } from '../actions'
 import type { ActionResult, AuthContextValue, LoginCredentials, SessionUser } from '../types'
 

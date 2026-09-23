@@ -31,6 +31,22 @@ export interface SessionUser {
   corURL?: string
 }
 
+export interface SessionUserRecord {
+  uid: string
+  email?: string
+  firstName?: string
+  lastName?: string
+  studentId?: string
+  role?: string
+  programId?: string
+  facultyId?: string
+  orgId?: string
+  yearLevel?: number
+  status?: string
+  corURL?: string
+  isDeleted: boolean
+}
+
 export interface LoginCredentials {
   email: string
   password: string
@@ -44,4 +60,3 @@ export interface AuthContextValue {
   signOut: () => Promise<void>
   refreshUser: () => Promise<void>
 }
-
