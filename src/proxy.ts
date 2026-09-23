@@ -26,15 +26,13 @@ export function proxy(request: NextRequest) {
     return NextResponse.next()
   }
 
-  // 2. If authenticated user tries to access /login, redirect to /
+  // 2. Always allow the login route. Cookie presence alone does not prove that
+  // the session is valid, and redirecting here can trap stale sessions in a loop.
   if (pathname === '/login') {
-    if (session) {
-      return NextResponse.redirect(new URL('/', request.url))
-    }
     return NextResponse.next()
   }
 
-  // 3. For protected routes, check if session cookie exists
+  // 3. For protected routes, optimistically check if a session cookie exists.
   const isProtected =
     pathname === '/' ||
     PROTECTED_PREFIXES.some(

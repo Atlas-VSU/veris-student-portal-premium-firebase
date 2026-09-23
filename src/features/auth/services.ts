@@ -2,6 +2,7 @@ import 'server-only'
 
 import { adminAuth } from '@/lib/firebase/admin'
 import { getSessionUserUseCase } from './usecases/get-session-user.usecase'
+import { isRecentSignIn, isTerminalSessionError } from './session-security'
 import type { SessionUser, SessionUserRecord } from './types'
 
 export const SESSION_DURATION_MS = 60 * 60 * 24 * 14 * 1000
@@ -17,7 +18,8 @@ export const SESSION_COOKIE_OPTIONS = {
 export class StudentSessionError extends Error {
   constructor(
     message: string,
-    readonly userId: string
+    readonly userId: string,
+    readonly reason: 'ineligible' | 'recent-sign-in-required' = 'ineligible'
   ) {
     super(message)
     this.name = 'StudentSessionError'
@@ -68,7 +70,16 @@ export async function createStudentSessionService(idToken: string): Promise<{
   sessionCookie: string
   user: SessionUser
 }> {
-  const decodedToken = await adminAuth.verifyIdToken(idToken)
+  const decodedToken = await adminAuth.verifyIdToken(idToken, true)
+
+  if (!isRecentSignIn(decodedToken.auth_time)) {
+    throw new StudentSessionError(
+      'For your security, please sign in again before starting a new session.',
+      decodedToken.uid,
+      'recent-sign-in-required'
+    )
+  }
+
   const record = await getSessionUserUseCase({ userId: decodedToken.uid })
   const user = requireEligibleStudent(record, decodedToken.uid, decodedToken.email)
   const sessionCookie = await adminAuth.createSessionCookie(idToken, {
@@ -84,4 +95,43 @@ export async function getSessionUserService(
 ): Promise<SessionUser> {
   const record = await getSessionUserUseCase({ userId })
   return requireEligibleStudent(record, userId, fallbackEmail)
+}
+
+export interface SessionRevocationResult {
+  revoked: boolean
+  userId?: string
+}
+
+export class SessionRevocationError extends Error {
+  constructor(
+    readonly userId: string,
+    cause: unknown
+  ) {
+    super(cause instanceof Error ? cause.message : 'Session revocation failed.')
+    this.name = 'SessionRevocationError'
+  }
+}
+
+export async function revokeStudentSessionService(
+  sessionCookie: string
+): Promise<SessionRevocationResult> {
+  let userId: string
+
+  try {
+    const claims = await adminAuth.verifySessionCookie(sessionCookie, true)
+    userId = claims.uid
+  } catch (error) {
+    if (isTerminalSessionError(error)) {
+      return { revoked: false }
+    }
+    throw error
+  }
+
+  try {
+    await adminAuth.revokeRefreshTokens(userId)
+  } catch (error) {
+    throw new SessionRevocationError(userId, error)
+  }
+
+  return { revoked: true, userId }
 }

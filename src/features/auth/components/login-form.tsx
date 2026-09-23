@@ -1,45 +1,29 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '../hooks/use-auth'
-
-const REDIRECT_BASE_URL = 'https://student-portal.invalid'
-
-function getSafeRedirectPath(candidate: string | null): string {
-  if (
-    !candidate ||
-    !candidate.startsWith('/') ||
-    candidate.startsWith('//') ||
-    candidate.includes('\\')
-  ) {
-    return '/'
-  }
-
-  try {
-    const url = new URL(candidate, REDIRECT_BASE_URL)
-    if (url.origin !== REDIRECT_BASE_URL) {
-      return '/'
-    }
-
-    return `${url.pathname}${url.search}${url.hash}`
-  } catch {
-    return '/'
-  }
-}
+import { getSafeRedirectPath } from '../redirects'
 
 export function LoginForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const redirectUrl = getSafeRedirectPath(searchParams.get('redirect'))
 
-  const { signIn } = useAuth()
+  const { signIn, isAuthenticated, loading: authLoading } = useAuth()
 
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!authLoading && isAuthenticated) {
+      router.replace(redirectUrl === '/login' ? '/' : redirectUrl)
+      router.refresh()
+    }
+  }, [authLoading, isAuthenticated, redirectUrl, router])
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()

@@ -4,9 +4,18 @@ import {
   SESSION_COOKIE_OPTIONS,
   StudentSessionError,
 } from '@/features/auth/services'
+import { isJsonRequest, isSameOriginRequest } from '@/features/auth/request-security'
 import { logAction } from '@/features/auth/usecases/log-action.usecase'
 
 export async function POST(request: Request) {
+  if (!isSameOriginRequest(request)) {
+    return NextResponse.json({ ok: false, error: 'Invalid request origin.' }, { status: 403 })
+  }
+
+  if (!isJsonRequest(request)) {
+    return NextResponse.json({ ok: false, error: 'Content-Type must be application/json.' }, { status: 415 })
+  }
+
   try {
     const body: unknown = await request.json()
     const idToken =
@@ -39,7 +48,12 @@ export async function POST(request: Request) {
             ? error.message
             : 'Failed to establish session. Please try again.',
       },
-      { status: error instanceof StudentSessionError ? 403 : 401 }
+      {
+        status:
+          error instanceof StudentSessionError && error.reason === 'ineligible'
+            ? 403
+            : 401,
+      }
     )
   }
 }

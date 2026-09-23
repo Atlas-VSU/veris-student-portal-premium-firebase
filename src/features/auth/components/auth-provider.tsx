@@ -1,8 +1,6 @@
 'use client'
 
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react'
-import { onAuthStateChanged } from 'firebase/auth'
-import { auth } from '@/lib/firebase/client'
 import { signInWithCredentials, signOutUser } from '../client'
 import { getSessionUserAction } from '../actions'
 import type { ActionResult, AuthContextValue, LoginCredentials, SessionUser } from '../types'
@@ -35,17 +33,24 @@ export function AuthProvider({
   }, [])
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      if (firebaseUser) {
-        await refreshUser()
-      } else {
-        setUser(null)
-        setLoading(false)
-      }
-    })
+    let cancelled = false
 
-    return () => unsubscribe()
-  }, [refreshUser])
+    void getSessionUserAction()
+      .then((result) => {
+        if (cancelled) return
+        setUser(result.ok ? result.data : null)
+      })
+      .catch(() => {
+        if (!cancelled) setUser(null)
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const signIn = async (credentials: LoginCredentials): Promise<ActionResult> => {
     setLoading(true)

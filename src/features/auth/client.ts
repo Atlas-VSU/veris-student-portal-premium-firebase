@@ -1,4 +1,9 @@
-import { signInWithEmailAndPassword, signOut as firebaseSignOut } from 'firebase/auth'
+import {
+  inMemoryPersistence,
+  setPersistence,
+  signInWithEmailAndPassword,
+  signOut as firebaseSignOut,
+} from 'firebase/auth'
 import { auth } from '@/lib/firebase/client'
 import { createSessionAction, destroySessionAction } from './actions'
 import type { ActionResult, LoginCredentials, SessionUser } from './types'
@@ -7,6 +12,7 @@ export async function signInWithCredentials(
   credentials: LoginCredentials
 ): Promise<ActionResult<{ user: SessionUser }>> {
   try {
+    await setPersistence(auth, inMemoryPersistence)
     const userCredential = await signInWithEmailAndPassword(
       auth,
       credentials.email.trim(),
@@ -14,13 +20,7 @@ export async function signInWithCredentials(
     )
 
     const idToken = await userCredential.user.getIdToken(true)
-    const result = await createSessionAction(idToken)
-
-    if (!result.ok) {
-      await firebaseSignOut(auth).catch(() => {})
-    }
-
-    return result
+    return await createSessionAction(idToken)
   } catch (error) {
     console.error('[Auth] Sign in failed:', error)
     const message = error instanceof Error ? error.message : 'Invalid student credentials.'
@@ -42,6 +42,9 @@ export async function signInWithCredentials(
       ok: false,
       error: message.startsWith('Firebase:') ? 'Invalid student credentials.' : message,
     }
+  } finally {
+    // The HTTP-only cookie is the sole session authority after the token exchange.
+    await firebaseSignOut(auth).catch(() => {})
   }
 }
 
