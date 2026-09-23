@@ -30,6 +30,7 @@ export async function getActiveEventsUseCase(input?: GetEventsInput): Promise<Ev
       majorEvent: data.majorEvent ?? false,
       fineTypeId: data.fineTypeId || '',
       orgId: data.orgId || '',
+      orgName: typeof data.orgName === 'string' ? data.orgName : undefined,
       programId: data.programId,
       facultyId: data.facultyId,
       accessLevelEvent: data.accessLevelEvent,

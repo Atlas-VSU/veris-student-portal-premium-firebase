@@ -27,6 +27,7 @@ export async function getEventByIdUseCase(input: GetEventByIdInput): Promise<Eve
     majorEvent: data.majorEvent ?? false,
     fineTypeId: data.fineTypeId || '',
     orgId: data.orgId || '',
+    orgName: typeof data.orgName === 'string' ? data.orgName : undefined,
     programId: data.programId,
     facultyId: data.facultyId,
     accessLevelEvent: data.accessLevelEvent,

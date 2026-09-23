@@ -1,8 +1,9 @@
 import { getActiveTermUseCase } from '@/features/terms/usecases/get-active-term.usecase'
 import { getActiveEventsUseCase } from './usecases/get-active-events.usecase'
-import { getOrganizationsMapUseCase } from './usecases/get-organizations-map.usecase'
+import { getEventByIdUseCase } from './usecases/get-event-by-id.usecase'
 import { getStudentAffiliationUseCase } from '@/features/profile/usecases/get-student-affiliation.usecase'
 import { toSafeDate } from '@/lib/date-format'
+import type { StudentAffiliation } from '@/features/profile/usecases/get-student-affiliation.usecase'
 import type { Event, EventStatus, TermFilter } from './types'
 
 export function determineEventStatus(dateMillis: number, manuallyCompleted = false): EventStatus {
@@ -15,7 +16,48 @@ export function determineEventStatus(dateMillis: number, manuallyCompleted = fal
   return 'upcoming'
 }
 
-export async function getEventsService(userId?: string, filter?: TermFilter): Promise<Event[]> {
+function canStudentViewEvent(
+  event: Event,
+  affiliation: StudentAffiliation | null
+): boolean {
+  if (event.accessLevelEvent === 3) {
+    return true
+  }
+
+  if (event.accessLevelEvent === 2) {
+    return Boolean(
+      event.facultyId &&
+      affiliation?.facultyId &&
+      event.facultyId === affiliation.facultyId
+    )
+  }
+
+  if (event.accessLevelEvent === 1) {
+    return Boolean(
+      event.programId &&
+      affiliation?.programId &&
+      event.programId === affiliation.programId
+    )
+  }
+
+  return false
+}
+
+function presentEvent(event: Event): Event {
+  const dateMillis = toSafeDate(event.date)?.getTime() ?? Date.now()
+  const computedStatus =
+    event.status === 'archived' || event.manuallyCompleted
+      ? event.status
+      : determineEventStatus(dateMillis, event.manuallyCompleted)
+
+  return {
+    ...event,
+    orgName: event.orgName || 'University Organization',
+    status: computedStatus,
+  }
+}
+
+export async function getEventsService(userId: string, filter?: TermFilter): Promise<Event[]> {
   let academicYear = filter?.academicYear
   let semester = filter?.semester
 
@@ -28,59 +70,35 @@ export async function getEventsService(userId?: string, filter?: TermFilter): Pr
     }
   }
 
-  const [rawEvents, orgMap, affiliation] = await Promise.all([
+  const [rawEvents, affiliation] = await Promise.all([
     getActiveEventsUseCase({
       academicYear,
       semester,
     }),
-    getOrganizationsMapUseCase(),
-    userId ? getStudentAffiliationUseCase(userId) : Promise.resolve(null),
+    getStudentAffiliationUseCase(userId),
   ])
 
-  // Filter events based on student's affiliation & Access Level (1, 2, 3)
-  const scopedEvents = rawEvents.filter((event) => {
-    const level = event.accessLevelEvent ?? 3
-    if (level === 3) return true // Campus(all students)
-
-    if (!affiliation) return true // If no affiliation context, default to open
-
-    if (level === 2) {
-      // Faculty level
-      if (event.facultyId && affiliation.facultyId && event.facultyId !== affiliation.facultyId) {
-        return false
-      }
-      return true
-    }
-
-    if (level === 1) {
-      // Department level
-      if (event.programId && affiliation.programId && event.programId !== affiliation.programId) {
-        return false
-      }
-      return true
-    }
-
-    return true
-  })
-
-  return scopedEvents.map((event) => {
-    const dateMillis = toSafeDate(event.date)?.getTime() ?? Date.now()
-    const computedStatus =
-      event.status === 'archived' || event.manuallyCompleted
-        ? event.status
-        : determineEventStatus(dateMillis, event.manuallyCompleted)
-
-    const org = event.orgId ? orgMap.get(event.orgId) : undefined
-    const orgName = org?.name || 'University Organization'
-
-    return {
-      ...event,
-      orgName,
-      status: computedStatus,
-    }
-  })
+  return rawEvents
+    .filter((event) => canStudentViewEvent(event, affiliation))
+    .map(presentEvent)
 }
 
-export async function getActiveEventsService(userId?: string): Promise<Event[]> {
+export async function getActiveEventsService(userId: string): Promise<Event[]> {
   return getEventsService(userId)
+}
+
+export async function getEventByIdService(
+  userId: string,
+  eventId: string
+): Promise<Event | null> {
+  const [event, affiliation] = await Promise.all([
+    getEventByIdUseCase({ eventId }),
+    getStudentAffiliationUseCase(userId),
+  ])
+
+  if (!event || !canStudentViewEvent(event, affiliation)) {
+    return null
+  }
+
+  return presentEvent(event)
 }
