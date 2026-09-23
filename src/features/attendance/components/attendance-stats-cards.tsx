@@ -28,7 +28,7 @@ export function AttendanceStatsCards({ stats, loading = false }: AttendanceStats
 
   const presentCount = stats?.presentCount ?? 0
   const partialCount = stats?.partialCount ?? 0
-  const totalAttended = stats?.totalAttended ?? (presentCount + partialCount)
+  const totalAttended = stats?.totalAttended ?? presentCount
   const absencesCount = stats?.absencesCount ?? 0
   const pendingAppealsCount = stats?.pendingAppealsCount ?? 0
 
@@ -46,7 +46,7 @@ export function AttendanceStatsCards({ stats, loading = false }: AttendanceStats
         </div>
         <div className="mt-3">
           <div className="text-3xl font-extrabold text-white tracking-tight">{totalAttended}</div>
-          <p className="text-[11px] text-slate-400 mt-1">Total verified participation records</p>
+          <p className="text-[11px] text-slate-400 mt-1">Events with full attendance</p>
         </div>
       </div>
 

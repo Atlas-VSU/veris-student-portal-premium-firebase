@@ -178,7 +178,7 @@ export async function getMyAttendanceStatsService(
   return {
     presentCount,
     partialCount,
-    totalAttended: presentCount + partialCount,
+    totalAttended: presentCount,
     absencesCount: absences.length,
     pendingAppealsCount: absences.filter((item) => item.isPendingAppeal).length,
   }
