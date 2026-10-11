@@ -11,6 +11,8 @@ import { EventDetailsModal } from './event-details-modal'
 export function EventsCatalogView() {
   const [events, setEvents] = useState<Event[]>([])
   const [loading, setLoading] = useState<boolean>(true)
+  const [error, setError] = useState<string | null>(null)
+  const [retryCount, setRetryCount] = useState(0)
   const [selectedTerm, setSelectedTerm] = useState<TermFilter | undefined>()
   const [statusTab, setStatusTab] = useState<EventStatus | 'all'>('all')
   const [searchQuery, setSearchQuery] = useState<string>('')
@@ -20,14 +22,24 @@ export function EventsCatalogView() {
     let isMounted = true
 
     async function load() {
+      setError(null)
+
       try {
         const res = await getEventsAction(selectedTerm)
         if (isMounted) {
-          setEvents(res.ok && res.data ? res.data : [])
+          if (res.ok) {
+            setEvents(res.data)
+          } else {
+            setEvents([])
+            setError(res.error)
+          }
         }
       } catch (err) {
         console.error('Failed to fetch events catalog:', err)
-        if (isMounted) setEvents([])
+        if (isMounted) {
+          setEvents([])
+          setError('Unable to load events. Please try again.')
+        }
       } finally {
         if (isMounted) setLoading(false)
       }
@@ -38,7 +50,7 @@ export function EventsCatalogView() {
     return () => {
       isMounted = false
     }
-  }, [selectedTerm])
+  }, [selectedTerm, retryCount])
 
   const handleTermChange = (filter: TermFilter) => {
     setLoading(true)
@@ -139,6 +151,24 @@ export function EventsCatalogView() {
               <div className="h-4 bg-slate-800 rounded w-1/2" />
             </div>
           ))}
+        </div>
+      ) : error ? (
+        <div
+          role="alert"
+          className="p-10 text-center rounded-2xl bg-red-500/5 border border-red-500/20 space-y-3"
+        >
+          <h3 className="text-base font-semibold text-red-300">Events are unavailable</h3>
+          <p className="text-xs text-slate-400 max-w-sm mx-auto">{error}</p>
+          <button
+            type="button"
+            onClick={() => {
+              setLoading(true)
+              setRetryCount((count) => count + 1)
+            }}
+            className="px-3.5 py-2 rounded-lg bg-red-500/10 border border-red-500/30 text-red-300 hover:bg-red-500/20 text-xs font-semibold transition-colors"
+          >
+            Try again
+          </button>
         </div>
       ) : filteredEvents.length === 0 ? (
         <div className="p-12 text-center rounded-2xl bg-slate-900/30 border border-slate-800/60 space-y-3">

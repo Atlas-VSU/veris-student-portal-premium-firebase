@@ -12,24 +12,35 @@ export function AttendanceLedgerView() {
   const [historyItems, setHistoryItems] = useState<AttendanceHistoryItem[]>([])
   const [stats, setStats] = useState<AttendanceStats | null>(null)
   const [loading, setLoading] = useState<boolean>(true)
+  const [error, setError] = useState<string | null>(null)
+  const [retryCount, setRetryCount] = useState(0)
   const [selectedTerm, setSelectedTerm] = useState<TermFilter | undefined>()
 
   useEffect(() => {
     let isMounted = true
 
     async function load() {
+      setError(null)
+
       try {
         const result = await getMyAttendanceOverviewAction(selectedTerm)
 
         if (!isMounted) return
 
-        setHistoryItems(result.ok ? result.data.history : [])
-        setStats(result.ok ? result.data.stats : null)
+        if (result.ok) {
+          setHistoryItems(result.data.history)
+          setStats(result.data.stats)
+        } else {
+          setHistoryItems([])
+          setStats(null)
+          setError(result.error)
+        }
       } catch (err) {
         console.error('Failed to load attendance ledger data:', err)
         if (isMounted) {
           setHistoryItems([])
           setStats(null)
+          setError('Unable to load attendance. Please try again.')
         }
       } finally {
         if (isMounted) {
@@ -43,7 +54,7 @@ export function AttendanceLedgerView() {
     return () => {
       isMounted = false
     }
-  }, [selectedTerm])
+  }, [selectedTerm, retryCount])
 
   const handleTermChange = (filter: TermFilter) => {
     setLoading(true)
@@ -75,21 +86,43 @@ export function AttendanceLedgerView() {
         </div>
       </div>
 
-      {/* Aggregate Statistics Cards (FR-EVT-01) */}
-      <section aria-labelledby="stats-heading">
-        <h2 id="stats-heading" className="sr-only">
-          Attendance Aggregate Statistics
-        </h2>
-        <AttendanceStatsCards stats={stats} loading={loading} />
-      </section>
+      {error && !loading ? (
+        <div
+          role="alert"
+          className="p-10 text-center rounded-2xl bg-red-500/5 border border-red-500/20 space-y-3"
+        >
+          <h2 className="text-base font-semibold text-red-300">Attendance is unavailable</h2>
+          <p className="text-xs text-slate-400 max-w-sm mx-auto">{error}</p>
+          <button
+            type="button"
+            onClick={() => {
+              setLoading(true)
+              setRetryCount((count) => count + 1)
+            }}
+            className="px-3.5 py-2 rounded-lg bg-red-500/10 border border-red-500/30 text-red-300 hover:bg-red-500/20 text-xs font-semibold transition-colors"
+          >
+            Try again
+          </button>
+        </div>
+      ) : (
+        <>
+          {/* Aggregate Statistics Cards (FR-EVT-01) */}
+          <section aria-labelledby="stats-heading">
+            <h2 id="stats-heading" className="sr-only">
+              Attendance Aggregate Statistics
+            </h2>
+            <AttendanceStatsCards stats={stats} loading={loading} />
+          </section>
 
-      {/* Chronological Attendance Ledger (FR-EVT-02) */}
-      <section aria-labelledby="ledger-heading">
-        <h2 id="ledger-heading" className="sr-only">
-          Event Attendance History Ledger
-        </h2>
-        <AttendanceHistoryTable items={historyItems} loading={loading} />
-      </section>
+          {/* Chronological Attendance Ledger (FR-EVT-02) */}
+          <section aria-labelledby="ledger-heading">
+            <h2 id="ledger-heading" className="sr-only">
+              Event Attendance History Ledger
+            </h2>
+            <AttendanceHistoryTable items={historyItems} loading={loading} />
+          </section>
+        </>
+      )}
     </div>
   )
 }
