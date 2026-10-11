@@ -30,41 +30,61 @@ export function AttendanceHistoryTable({ items, loading = false }: AttendanceHis
     })
   }, [items, statusFilter, search])
 
+  const renderFineStatus = (item: AttendanceHistoryItem) => {
+    if (item.fineAmount === undefined || item.fineAmount <= 0 || !item.fineState) {
+      return null
+    }
+
+    const labels = {
+      outstanding: `₱${item.fineAmount.toFixed(2)} fine`,
+      pending_review: `₱${item.fineAmount.toFixed(2)} pending review`,
+      paid: `₱${item.fineAmount.toFixed(2)} fine paid`,
+      waived: `₱${item.fineAmount.toFixed(2)} fine waived`,
+    }
+    const colors = {
+      outstanding: 'text-rose-300',
+      pending_review: 'text-amber-300',
+      paid: 'text-emerald-300',
+      waived: 'text-blue-300',
+    }
+
+    return (
+      <span className={`text-[10px] ${colors[item.fineState]}`}>
+        {labels[item.fineState]}
+      </span>
+    )
+  }
+
   const renderStatusBadge = (item: AttendanceHistoryItem) => {
+    let badge: React.ReactNode
+
     if (item.status === 'present') {
-      return (
+      badge = (
         <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
           <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
           Present
         </span>
       )
-    }
-    if (item.status === 'partially present') {
-      return (
-        <div className="flex flex-col gap-1">
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-amber-500/10 border border-amber-500/20 text-amber-400">
-            <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
-            Partially Present
-          </span>
-          {item.fineAmount !== undefined && item.fineAmount > 0 && (
-            <span className="text-[10px] text-amber-300">
-              ₱{item.fineAmount.toFixed(2)} fine
-            </span>
-          )}
-        </div>
+    } else if (item.status === 'partially present') {
+      badge = (
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-amber-500/10 border border-amber-500/20 text-amber-400">
+          <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+          Partially Present
+        </span>
       )
-    }
-    return (
-      <div className="flex flex-col gap-1">
+    } else {
+      badge = (
         <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-rose-500/10 border border-rose-500/20 text-rose-400">
           <span className="w-1.5 h-1.5 rounded-full bg-rose-400" />
           Absent
         </span>
-        {item.fineAmount !== undefined && item.fineAmount > 0 && (
-          <span className="text-[10px] text-rose-300">
-            ₱{item.fineAmount.toFixed(2)} fine
-          </span>
-        )}
+      )
+    }
+
+    return (
+      <div className="flex flex-col gap-1">
+        {badge}
+        {renderFineStatus(item)}
       </div>
     )
   }
@@ -188,9 +208,9 @@ export function AttendanceHistoryTable({ items, loading = false }: AttendanceHis
                   <td className="py-3.5 px-4 text-slate-400 max-w-xs">
                     <div className="flex items-center gap-1.5 flex-wrap">
                       <span className="truncate">{item.remark || '—'}</span>
-                      {item.isPendingAppeal && (
-                        <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-500/10 text-amber-300 border border-amber-500/20">
-                          Appeal Pending
+                      {item.fineState === 'waived' && (
+                        <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-blue-500/10 text-blue-300 border border-blue-500/20">
+                          {item.waiverReason ? `Waived: ${item.waiverReason}` : 'Fine waived'}
                         </span>
                       )}
                     </div>

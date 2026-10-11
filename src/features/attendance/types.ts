@@ -4,6 +4,7 @@ import type { TermFilter } from '@/features/terms/types'
 export type { ActionResult, TermFilter }
 
 export type AttendanceStatus = 'present' | 'partially present' | 'absent'
+export type AttendanceFineState = 'outstanding' | 'pending_review' | 'paid' | 'waived'
 
 export interface AttendanceRecord {
   id: string
@@ -39,7 +40,8 @@ export interface AttendanceHistoryItem {
   status: AttendanceStatus
   remark?: string
   fineAmount?: number
-  isPendingAppeal?: boolean
+  fineState?: AttendanceFineState
+  waiverReason?: string
   parentFineId?: string
   fineItemId?: string
 }
@@ -49,7 +51,6 @@ export interface AttendanceStats {
   partialCount: number
   totalAttended: number
   absencesCount: number
-  pendingAppealsCount?: number
 }
 
 export interface AttendanceOverview {
@@ -73,4 +74,7 @@ export interface AttendanceFineItem {
   amount: number
   reason?: string
   isPending: boolean
+  isPaid: boolean
+  isWaived: boolean
+  waivedReason?: string
 }

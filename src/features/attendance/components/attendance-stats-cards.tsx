@@ -30,7 +30,6 @@ export function AttendanceStatsCards({ stats, loading = false }: AttendanceStats
   const partialCount = stats?.partialCount ?? 0
   const totalAttended = stats?.totalAttended ?? presentCount
   const absencesCount = stats?.absencesCount ?? 0
-  const pendingAppealsCount = stats?.pendingAppealsCount ?? 0
 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -94,14 +93,7 @@ export function AttendanceStatsCards({ stats, loading = false }: AttendanceStats
         </div>
         <div className="mt-3">
           <div className="text-3xl font-extrabold text-white tracking-tight">{absencesCount}</div>
-          <div className="flex items-center gap-1.5 mt-1">
-            <p className="text-[11px] text-slate-400">Event non-attendance infractions</p>
-            {pendingAppealsCount > 0 && (
-              <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-500/10 text-amber-300 border border-amber-500/20">
-                {pendingAppealsCount} in appeal
-              </span>
-            )}
-          </div>
+          <p className="text-[11px] text-slate-400 mt-1">Event non-attendance infractions</p>
         </div>
       </div>
     </div>

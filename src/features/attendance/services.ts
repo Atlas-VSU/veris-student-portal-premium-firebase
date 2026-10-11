@@ -4,7 +4,11 @@ import { getMyAttendanceUseCase } from './usecases/get-my-attendance.usecase'
 import { getMyAttendanceFinesUseCase } from './usecases/get-my-attendance-fines.usecase'
 import { getAttendanceFineItemsUseCase } from './usecases/get-attendance-fine-items.usecase'
 import { toSafeDate, toIsoString } from '@/lib/date-format'
-import { calculateAttendanceStats, matchesTerm } from './calculations'
+import {
+  calculateAttendanceStats,
+  matchesTerm,
+  resolveAttendanceFineState,
+} from './calculations'
 import type { SessionUser } from '@/features/auth/types'
 import type {
   AttendanceRecord,
@@ -26,7 +30,10 @@ interface FineItemInfo {
   eventDate?: unknown
   amount: number
   reason?: string
-  isPending?: boolean
+  isPending: boolean
+  isPaid: boolean
+  isWaived: boolean
+  waivedReason?: string
   orgId: string
   orgName?: string
   academicYear?: string
@@ -134,10 +141,11 @@ export async function getMyAttendanceHistoryService(
       majorEvent: event?.majorEvent ?? false,
       timeIn: record.timeIn,
       timeOut: record.timeOut,
-      status: record.status,
+      status: resolveAttendanceStatus(record),
       remark: record.remark || fineInfo?.reason || undefined,
       fineAmount: fineInfo?.amount,
-      isPendingAppeal: fineInfo?.isPending,
+      fineState: fineInfo ? resolveAttendanceFineState(fineInfo) : undefined,
+      waiverReason: fineInfo?.waivedReason,
       parentFineId: fineInfo?.parentFineId,
       fineItemId: fineInfo?.id,
     })
@@ -172,7 +180,8 @@ export async function getMyAttendanceHistoryService(
       status: 'absent',
       remark: fine.reason || 'Absent from event (infraction assessed)',
       fineAmount: fine.amount,
-      isPendingAppeal: fine.isPending,
+      fineState: resolveAttendanceFineState(fine),
+      waiverReason: fine.waivedReason,
       parentFineId: fine.parentFineId,
       fineItemId: fine.id,
     })

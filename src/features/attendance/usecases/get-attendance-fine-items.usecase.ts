@@ -16,7 +16,11 @@ export async function getAttendanceFineItemsUseCase(
 
   return snapshot.docs.flatMap((doc) => {
     const data = doc.data()
-    if (!data.eventId || data.isArchived === true || data.isWaived === true) {
+    if (
+      !data.eventId ||
+      data.isArchived === true ||
+      data.metadata?.isArchived === true
+    ) {
       return []
     }
 
@@ -28,6 +32,9 @@ export async function getAttendanceFineItemsUseCase(
       amount: typeof data.amount === 'number' ? data.amount : 0,
       reason: typeof data.reason === 'string' ? data.reason : undefined,
       isPending: data.isPending === true,
+      isPaid: data.isPaid === true,
+      isWaived: data.isWaived === true,
+      waivedReason: typeof data.waivedReason === 'string' ? data.waivedReason : undefined,
     }]
   })
 }

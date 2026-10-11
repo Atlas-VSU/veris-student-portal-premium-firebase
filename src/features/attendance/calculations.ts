@@ -1,4 +1,10 @@
-import type { AttendanceHistoryItem, AttendanceStats, TermFilter } from './types'
+import type {
+  AttendanceFineItem,
+  AttendanceFineState,
+  AttendanceHistoryItem,
+  AttendanceStats,
+  TermFilter,
+} from './types'
 
 export function matchesTerm(
   filter: TermFilter | undefined,
@@ -28,6 +34,14 @@ export function calculateAttendanceStats(
     partialCount,
     totalAttended: presentCount,
     absencesCount: absences.length,
-    pendingAppealsCount: absences.filter((item) => item.isPendingAppeal).length,
   }
+}
+
+export function resolveAttendanceFineState(
+  fine: Pick<AttendanceFineItem, 'isWaived' | 'isPaid' | 'isPending'>
+): AttendanceFineState {
+  if (fine.isWaived) return 'waived'
+  if (fine.isPaid) return 'paid'
+  if (fine.isPending) return 'pending_review'
+  return 'outstanding'
 }

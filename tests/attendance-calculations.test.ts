@@ -4,6 +4,7 @@ import test from 'node:test'
 import {
   calculateAttendanceStats,
   matchesTerm,
+  resolveAttendanceFineState,
 } from '../src/features/attendance/calculations.ts'
 import type { AttendanceHistoryItem } from '../src/features/attendance/types.ts'
 import type { TermFilter } from '../src/features/terms/types.ts'
@@ -21,7 +22,7 @@ test('attendance totals count only full attendance', () => {
   const history: AttendanceHistoryItem[] = [
     historyItem('present'),
     historyItem('partially present'),
-    historyItem('absent', true),
+    historyItem('absent'),
   ]
 
   assert.deepEqual(calculateAttendanceStats(history), {
@@ -29,13 +30,30 @@ test('attendance totals count only full attendance', () => {
     partialCount: 1,
     totalAttended: 1,
     absencesCount: 1,
-    pendingAppealsCount: 1,
   })
 })
 
+test('attendance fine states distinguish review, payment, and waiver outcomes', () => {
+  assert.equal(
+    resolveAttendanceFineState({ isWaived: false, isPaid: false, isPending: false }),
+    'outstanding'
+  )
+  assert.equal(
+    resolveAttendanceFineState({ isWaived: false, isPaid: false, isPending: true }),
+    'pending_review'
+  )
+  assert.equal(
+    resolveAttendanceFineState({ isWaived: false, isPaid: true, isPending: true }),
+    'paid'
+  )
+  assert.equal(
+    resolveAttendanceFineState({ isWaived: true, isPaid: true, isPending: true }),
+    'waived'
+  )
+})
+
 function historyItem(
-  status: AttendanceHistoryItem['status'],
-  isPendingAppeal = false
+  status: AttendanceHistoryItem['status']
 ): AttendanceHistoryItem {
   return {
     id: status,
@@ -43,6 +61,5 @@ function historyItem(
     eventName: status,
     majorEvent: false,
     status,
-    isPendingAppeal,
   }
 }
