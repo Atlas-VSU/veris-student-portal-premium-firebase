@@ -1,4 +1,5 @@
 import { getEventByIdService } from '@/features/events/services'
+import { resolveTermFilterService } from '@/features/terms/services'
 import { getMyAttendanceUseCase } from './usecases/get-my-attendance.usecase'
 import { getMyAttendanceFinesUseCase } from './usecases/get-my-attendance-fines.usecase'
 import { getAttendanceFineItemsUseCase } from './usecases/get-attendance-fine-items.usecase'
@@ -68,13 +69,14 @@ async function getStudentAbsenceFineItems(
 export async function getMyAttendanceHistoryService(
   input: AttendanceServiceInput
 ): Promise<AttendanceHistoryItem[]> {
+  const resolvedFilter = await resolveTermFilterService(input.filter)
   const eligibleOrganizationIdSet = new Set(input.eligibleOrganizationIds)
   const [records, absenceFines] = await Promise.all([
     getMyAttendanceUseCase({ userId: input.userId }),
     getStudentAbsenceFineItems(
       input.userId,
       eligibleOrganizationIdSet,
-      input.filter
+      resolvedFilter
     ),
   ])
   const eligibleRecords = records.filter((record) =>
@@ -112,7 +114,7 @@ export async function getMyAttendanceHistoryService(
   // 1. Process Check-in records (Present / Partially Present)
   for (const record of eligibleRecords) {
     const event = eventById.get(record.eventId) || null
-    if (!event || !matchesTerm(input.filter, event.academicYear, event.semester)) {
+    if (!event || !matchesTerm(resolvedFilter, event.academicYear, event.semester)) {
       continue
     }
 
@@ -148,7 +150,7 @@ export async function getMyAttendanceHistoryService(
     }
 
     const event = eventById.get(fine.eventId) || null
-    if (!event || !matchesTerm(input.filter, fine.academicYear, fine.semester)) {
+    if (!event || !matchesTerm(resolvedFilter, fine.academicYear, fine.semester)) {
       continue
     }
 

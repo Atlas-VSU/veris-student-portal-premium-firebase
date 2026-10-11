@@ -76,6 +76,10 @@ export function TermSelector({
     }
 
     const [ay, sem] = val.split('_')
+    if (!ay || (sem !== '1st' && sem !== '2nd')) {
+      return
+    }
+
     onTermChange({
       academicYear: ay,
       semester: sem,

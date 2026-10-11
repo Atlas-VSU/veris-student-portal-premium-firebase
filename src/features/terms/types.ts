@@ -18,5 +18,5 @@ export interface Term {
 
 export interface TermFilter {
   academicYear?: string
-  semester?: AcademicSemester | string
+  semester?: AcademicSemester
 }

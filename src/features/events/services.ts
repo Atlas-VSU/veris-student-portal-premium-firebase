@@ -1,4 +1,4 @@
-import { getActiveTermUseCase } from '@/features/terms/usecases/get-active-term.usecase'
+import { resolveTermFilterService } from '@/features/terms/services'
 import { getActiveEventsUseCase } from './usecases/get-active-events.usecase'
 import { getEventByIdUseCase } from './usecases/get-event-by-id.usecase'
 import { toSafeDate } from '@/lib/date-format'
@@ -66,21 +66,11 @@ export async function getEventsService(
   eligibleOrganizationIds: readonly string[],
   filter?: TermFilter
 ): Promise<Event[]> {
-  let academicYear = filter?.academicYear
-  let semester = filter?.semester
-
-  // If filter is explicitly undefined (default initial load), fallback to active term
-  if (filter === undefined) {
-    const activeTerm = await getActiveTermUseCase()
-    if (activeTerm) {
-      academicYear = activeTerm.AY
-      semester = activeTerm.semester
-    }
-  }
+  const resolvedFilter = await resolveTermFilterService(filter)
 
   const rawEvents = await getActiveEventsUseCase({
-    academicYear,
-    semester,
+    academicYear: resolvedFilter.academicYear,
+    semester: resolvedFilter.semester,
   })
   const eligibleOrganizationIdSet = new Set(eligibleOrganizationIds)
 

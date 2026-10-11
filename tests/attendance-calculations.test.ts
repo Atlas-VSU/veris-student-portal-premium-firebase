@@ -6,9 +6,10 @@ import {
   matchesTerm,
 } from '../src/features/attendance/calculations.ts'
 import type { AttendanceHistoryItem } from '../src/features/attendance/types.ts'
+import type { TermFilter } from '../src/features/terms/types.ts'
 
 test('term filtering fails closed when event term data is unavailable', () => {
-  const activeTerm = { academicYear: '2026-2027', semester: '1st' }
+  const activeTerm: TermFilter = { academicYear: '2026-2027', semester: '1st' }
 
   assert.equal(matchesTerm(activeTerm, '2026-2027', '1st'), true)
   assert.equal(matchesTerm(activeTerm, '2025-2026', '1st'), false)
