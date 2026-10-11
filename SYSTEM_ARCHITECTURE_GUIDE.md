@@ -1,835 +1,784 @@
-# VERIS Student Portal & Backend System Guide
-> **Unified Architectural Reference, Domain Schema & Execution Playbook**  
-> *Synthesized from VERIS Architecture Guidelines & CORAL-USSC Backend System Documentation.*
+# VERIS Student Portal — System Architecture Guide
+
+> **Document Version:** 2.2.2
+>
+> **Status:** For Review — live schema verification pending
+>
+> **Last Revised:** 2026-10-12
 
 ---
 
-## Quick Navigation
+## 1. Purpose, Ownership, and Sources
 
-```
-├── 1. System Overview & Scope Matrix
-├── 2. Feature-Driven Architecture & Layering
-├── 3. Authentication & Security Model (AAA)
-├── 4. Complete Firestore Data Dictionary
-├── 5. Core Business Engines & State Machines
-│    ├── 5.1 Events & Attendance Engine
-│    ├── 5.2 Fine Generation Engine
-│    ├── 5.3 Fee Management Engine
-│    ├── 5.4 Clearance State Machine
-│    └── 5.5 Payment & Verification Flow
-├── 6. Caching & Performance Architecture
-├── 7. Audit Logging (Tiered Accounting)
-├── 8. Engineering Standards & Code Patterns
-└── 9. Firestore Composite Index Reference
-```
+This guide defines the technical contracts shared by the VERIS Student Portal and CORAL-USSC:
+
+- authentication and authorization policy;
+- Firestore collection and field contracts;
+- ownership, organization, and term invariants;
+- query and transaction patterns;
+- cross-application workflows; and
+- unresolved schema migrations.
+
+Document ownership is intentionally separated:
+
+| Document | Owns |
+|---|---|
+| FUNCTIONAL_REQUIREMENTS_SPECIFICATION.md | Student behavior, business outcomes, and acceptance criteria |
+| SYSTEM_ARCHITECTURE_GUIDE.md | System policies, Firestore contracts, authentication, integration, and data workflows |
+| ARCHITECTURE.md | Repository placement and the Action → Service → Use Case dependency flow |
+
+### 1.1 Source Precedence
+
+This guide was reconciled from:
+
+1. the student portal source code;
+2. the CORAL-USSC backend document;
+3. the functional requirements; and
+4. the previous system guide.
+
+The live shared Firestore database has not been inspected during this revision. Therefore:
+
+- fields confirmed by CORAL and current student code are marked as the current contract;
+- target additions are marked optional or migration fields;
+- unresolved conflicts are listed in Section 10; and
+- no destructive schema migration should be performed solely from this document.
 
 ---
 
-## 1. System Overview & Scope Matrix
+## 2. System Context
 
-The VERIS platform consists of two distinct applications interacting over a shared Google Cloud Firestore database:
+VERIS consists of two applications using a shared Firestore database.
 
-```
-┌──────────────────────────────────────┐          ┌──────────────────────────────────────┐
-│       VERIS Student Portal           │          │       CORAL-USSC Admin Portal        │
-│       (This Repository)              │          │       (Officer / Admin System)       │
-├──────────────────────────────────────┤          ├──────────────────────────────────────┤
-│ • Student Self-Service & Status      │          │ • Officer Operations & Audits        │
-│ • View Fees, Fines & Balances (L2-3) │          │ • Create Events & Generate Fines     │
-│ • Multi-Term & Historical Lookup     │  Shared  │ • Fee Generation & Batch Rosters     │
-│ • Built-In Payment Portal (/clearance│ Firestore│ • Payment Verification & Cashiering  │
-│ • Submit Payment Proofs (GCash/Bank) │ ◄──────► │ • Clearance Recalculation Engine     │
-│ • Check Attendance & History (L1-3)  │          │ • Access Level Scoping (L1 / L2 / L3)│
-│ • Monitor Semester Clearance (L2-3)  │          │ • Role-Based Access Control (RBAC)   │
-│ • Submit Fine Infraction Appeals     │          │ • Physical Payment Recording         │
-└──────────────────────────────────────┘          └──────────────────────────────────────┘
-```
-
-### Population Scope vs. Subscription Tier Capabilities
-
-In the VERIS ecosystem, **Population Scope** and **Subscription Tier Capabilities** are strictly decoupled:
-- **Population Scope (`accessLevel: 1 | 2 | 3`)**: Controls institutional audience reach in backend queries (`1`: Program-specific, `2`: Faculty/College-specific, `3`: University-wide / Apex). In the student portal UI, affiliated organizations are rendered directly by name (`orgName`) without artificial level labels.
-- **Subscription Tiers (`basic` | `plus` | `premium`)**: Stored in the `subscriptions` collection and dictate the operational modules enabled for an organization:
-
-| Domain Module | Applicable Subscription Tiers | Scope Behavior for Student Portal |
+| Responsibility | Student Portal | CORAL-USSC |
 |---|---|---|
-| **Events & Attendance** (`/events`, `/attendance`) | **Basic, Plus, and Premium** | Aggregates event schedules, attendance scans, and participation stats across all affiliated organizations, filtered by the student's population scope. |
-| **Fees & Ledgers** (`/fees`) | **Plus and Premium ONLY** | Displays assessed fees issued by Plus and Premium tier organizations. Unpaid fee callouts redirect internally to `/clearance`. |
-| **Fines & Infractions** (`/fines`) | **Plus and Premium ONLY** | Displays infraction records, fine balances, and appeal triggers for Plus and Premium tier organizations. |
-| **Clearance & Built-In Payment Portal** (`/clearance`) | **Plus and Premium ONLY** | Tracks clearance blockers across all Plus and Premium tier organizations. Houses the built-in payment portal for settling obligations. |
+| Primary users | Enrolled students | Officers, cashiers, administrators |
+| Reads | Own attendance, events, fees, fines, clearance, payment status | Organization-scoped operational records |
+| Writes | Payment submissions and permitted profile updates | Events, attendance, fees, fines, waivers, verification, clearance |
+| Authorization | Authenticated student ownership | Role, organization, and access-level scope |
+| Database access | Server-side Firebase Admin | Existing admin application access model |
 
-### Architectural Separation of Concerns
+### 2.1 Institutional Scope
 
-| Dimension | Student Portal (`veris-student-portal`) | Admin Portal (`coral-ussc`) |
+| Access level | Scope field | Meaning |
 |---|---|---|
-| **Primary Audience** | Enrolled Students | Organization Officers, Faculty Admins, Super Admins |
-| **Auth Model** | Session Cookie + **Ownership Key (`userId`)** | Session Cookie + **Access Level (1=Prog, 2=Fac, 3=Org)** |
-| **Data Scope** | Strict Self-Access (`where("userId", "==", userId)`) across active & historical terms | Multi-tenant Org Scoped (`buildBaseConstraints`) |
-| **Database SDK** | **Firebase Admin SDK** inside Server Actions & Use Cases | **Client SDK + Admin SDK** |
-| **Payment Flow** | **Built-in Payment Hub on `/clearance`**: Students submit proofs for unpaid obligations | **In-App Cashiering**: Verifies submitted proofs & logs over-the-counter payments |
-| **Deletion Policy** | No physical deletes (Soft-delete / `isArchived`) | Soft-delete with cascading archival |
+| 1 | programId | Program-specific |
+| 2 | facultyId | Faculty or college-specific |
+| 3 | none beyond university eligibility | University-wide or apex |
+
+Population scope and product entitlement are independent checks. Levels 1–3 determine which students belong to an organization’s population. The `organizations.subscribed` flag is the current Premium entitlement: only documents belonging to an active organization with `subscribed === true` may appear anywhere in this Premium Student Portal.
+
+This gate applies to events, attendance, fees, fines, clearance, payment submissions, dashboards, totals, histories, and direct record access. Optional `subscriptionId` and `subscriptionTier` properties found in a TypeScript type are not part of the active persistence contract and must not be used for authorization until an explicit migration replaces the boolean flag.
 
 ---
 
-## 2. Feature-Driven Architecture & Layering
+## 3. Application and Security Boundary
 
-The codebase abandons horizontal slicing (`/components`, `/hooks`, `/services`) in favor of **Domain-Driven Feature Modules**. Every business domain is a self-contained vertical module.
+The canonical feature flow is:
 
-```
-src/
-├── app/                                 # Next.js App Router (Routes & Page Shells ONLY)
-│   ├── (student)/                       # Protected Student Route Group
-│   │   ├── attendance/                  # /attendance
-│   │   ├── clearance/                   # /clearance
-│   │   ├── events/                      # /events
-│   │   ├── fees/                        # /fees
-│   │   ├── fines/                       # /fines
-│   │   └── profile/                     # /profile
-│   ├── (public)/                        # Public Route Group (/login, /)
-│   └── api/auth/                        # Lightweight Session Endpoints
-│
-├── features/                            # 🚀 VERTICAL FEATURE MODULES
-│   ├── attendance/                      # Attendance tracking & participation stats
-│   ├── auth/                            # Session, cookie & audit logging
-│   ├── clearance/                       # Semester clearance status & blockers
-│   ├── events/                          # Event schedule, catalog & requirements
-│   ├── fees/                            # Fee ledger & payment portal redirect
-│   ├── fines/                           # Infraction records, fine balances & appeals
-│   ├── profile/                         # Student identity details
-│   └── terms/                           # Active & historical academic term lookup
-│
-├── components/                          # Cross-feature shared UI (Owned by Frontend)
-│   ├── ui/                              # Primitive UI components (ShadCN)
-│   ├── layout/                          # App shell, Navbar, Sidebar
-│   └── shared/                          # Composed components (Rule of Three)
-│
-├── lib/firebase/                        # Server & Client Firebase Infrastructure
-│   ├── admin.ts                         # Firebase Admin SDK (Server-only)
-│   ├── client.ts                        # Firebase Client SDK (Browser-only)
-│   └── with-auth.ts                     # withAuth Higher-Order Function
-│
-└── types/                               # Global cross-cutting TypeScript definitions
-    └── index.ts                         # Standard ActionResult<T>
-```
+    Frontend → Action → Service → Use Case → Firebase Admin / Firestore
 
-### Strict 3-Tier Layering Contract
+- Frontend code calls Server Actions and consumes serializable DTOs.
+- Actions authenticate, validate request-shaped input, and call services.
+- Services enforce business and visibility rules and orchestrate use cases.
+- Use cases perform Firestore reads, writes, batches, and transactions.
+- Domain Firestore access through adminDb remains inside use cases.
+- Authentication services may use adminAuth.
 
-```
-┌────────────────────────────────────────────────────────────────────────┐
-│ 1. SERVER ACTIONS  [ features/<domain>/actions.ts ]                    │
-│    • Entry point marked 'use server'                                   │
-│    • Wrapped in withAuth() for authentication & ownership extraction   │
-│    • Never queries Firestore directly; never contains business rules   │
-└──────────────────────────────────┬─────────────────────────────────────┘
-                                   │
-                     ┌─────────────┴─────────────┐
-                     ▼                           ▼
-┌──────────────────────────────────┐ ┌──────────────────────────────────┐
-│ 2. SERVICES                      │ │ 3. USE CASES                     │
-│    [ features/<domain>/services ]│ │    [ features/<domain>/usecases ]│
-│    • Pure TypeScript (no server  │ │    • ONE file = ONE operation    │
-│      directive)                  │ │    • The ONLY layer importing    │
-│    • Orchestrates multiple use   │ │      adminDb                     │
-│      cases                       │ │    • Accepts plain arguments;    │
-│    • Enforces business logic     │ │      never re-fetches user       │
-│      (e.g., clearance rules)     │ │    • Enforces DB-level ownership │
-└─────────────────┬────────────────┘ └──────────────────────────────────┘
-                  │                              ▲
-                  └──────────────────────────────┘
-```
+ARCHITECTURE.md is the canonical source for file placement and import rules.
 
-> [!TIP]
-> **Pragmatic Layering Rule:** If an action calls a single use case with zero business validation or multi-model orchestration, it may call the use case directly inside `withAuth`. Introduce a `service` when orchestrating multiple operations or evaluating domain policies.
+### 3.1 Firebase Admin Security Rule
 
----
+Firebase Admin bypasses Firestore Security Rules. Server authorization is therefore mandatory:
 
-## 3. Authentication & Security Model (AAA)
+1. Verify the session with revocation checking.
+2. Revalidate that the user record exists, is approved, is not deleted, and has the student role.
+3. Obtain the Firebase UID from the verified session.
+4. Resolve the active Premium-subscribed organizations whose population scope includes the student.
+5. Pass the UID and resolved eligible organization IDs through the action and service boundary.
+6. Scope every student-owned query or mutation with the UID and verify that its organization belongs to that eligible set.
 
-The Student Portal enforces a strict **AAA (Authentication, Authorization, Accounting)** pipeline on every request.
+Never authorize a request using a browser-supplied studentId or userId.
 
-```
-Client (Browser)
-   │
-   ├─ 1. Next.js Server Action Call
-   │
-   ▼
-withAuth(actionName, callback)
-   │
-   ├─► [AUTH]  Read HTTP-only '__session' cookie
-   │           Verify cryptographic signature via Firebase Admin SDK
-   │           Claims extract: claims.uid
-   │
-   ├─► [AUTHZ] Inject userId into action callback
-   │           Use case scopes Firestore query by: studentId == userId
-   │
-   └─► [ACCT]  void logAction({ userId, action, success, error })
-               • High security signal (failures): Always logged
-               • Mutations (writes): Always logged
-               • Safe reads: Log skipped (zero noise / zero write cost)
-```
+### 3.2 Identity Invariants
 
-### Session Lifecycle
-
-```
-[Login]
-Client: signInWithEmailAndPassword() ──► Returns idToken
-Client: POST /api/auth/session { idToken }
-Server: adminAuth.createSessionCookie(idToken, { expiresIn: 14 Days })
-Server: Set-Cookie: __session=<jwt>; HttpOnly; Secure; SameSite=Strict; Path=/
-
-[Sign Out]
-Client: POST /api/auth/signout
-Server: adminAuth.revokeRefreshTokens(claims.uid)
-Server: Clear-Cookie: __session
-```
-
----
-
-## 4. Complete Firestore Data Dictionary
-
-### Core Collections Matrix
-
-```
-                          ┌────────────────────────┐
-                          │         users          │
-                          │   (id: Firebase UID)   │
-                          └───────────┬────────────┘
-                                      │ 1:N
-        ┌─────────────────────────────┼─────────────────────────────┐
-        ▼                             ▼                             ▼
-┌───────────────┐             ┌───────────────┐             ┌───────────────┐
-│     fees      │             │     fines     │             │eventAttendees │
-│ (id: autoGen) │             │ (id: autoGen) │             │ (id: autoGen) │
-└───────┬───────┘             └───────┬───────┘             └───────▲───────┘
-        │ 1:N                         │ 1:N                         │
-        ▼                             ▼                             │ N:1
-┌───────────────┐             ┌───────────────┐             ┌───────┴───────┐
-│paymentHistory │             │   fineItems   │             │    events     │
-│(subcollection)│             │(subcollection)│             │ (id: autoGen) │
-└───────────────┘             └───────┬───────┘             └───────────────┘
-                                      │ 1:N
-                                      ▼
-                              ┌───────────────┐
-                              │paymentHistory │
-                              │(subcollection)│
-                              └───────────────┘
-```
-
----
-
-### 4.1 `users`
-* **Doc ID:** Firebase Auth `UID`  
-* **Purpose:** Core student profile and academic program linking.
-
-| Field | Type | Description |
+| Name | Meaning | Security use |
 |---|---|---|
-| `studentId` | `string` | Official University Student ID (Format: `XX-X-XXXXX`) |
-| `email` | `string` | Student institutional / primary email address |
-| `firstName` | `string` | Student given name |
-| `lastName` | `string` | Student surname |
-| `programId` | `string` | FK → `programs` collection |
-| `facultyId` | `string` | FK → `faculties` collection |
-| `orgId` | `string` | FK → `organizations` collection |
-| `role` | `"user" \| "admin" \| "super-admin"` | Portal role (Students are `"user"`) |
-| `yearLevel` | `number` | Academic year level (`1`–`6`) |
-| `status` | `"pending" \| "approved"` | Account approval state |
-| `corURL` | `string?` | Firebase Storage URL for Certificate of Registration |
-| `isDeleted` | `boolean` | Soft-delete flag (excludes record from queries) |
-| `createdAt` | `Timestamp` | Registration timestamp |
-| `updatedAt` | `Timestamp` | Last profile update timestamp |
+| userId | Firebase Authentication UID | Authoritative ownership key |
+| studentId | University-issued student number | Display and institutional lookup only |
+| orgId | Organization document ID | Authoritative organization relationship |
+| orgName | Denormalized display snapshot | Display only; never authorization |
+
+### 3.3 Session Policy
+
+- Only approved, non-deleted users with role "user" may establish or continue a student session.
+- Premium features require at least one active, subscribed organization whose population scope includes the student.
+- Session verification checks revocation.
+- A user’s current Firestore account state is revalidated for protected operations.
+- Sign-out clears the local session even when remote revocation fails.
+- Authentication failures and student mutations are auditable.
 
 ---
 
-### 4.2 `terms`
-* **Doc ID:** Auto-generated  
-* **Rule:** **Exactly one** term document has `isActive = true` globally.
+## 4. Firestore Conventions
 
-| Field | Type | Description |
+### 4.1 Document IDs
+
+- Firestore document IDs are read from DocumentSnapshot.id.
+- An id field is stored only where the shared schema already requires one.
+- users documents use the Firebase UID as the document ID.
+- clearanceStatus uses a deterministic ID based on student, organization, and term.
+- Most other documents use auto-generated IDs.
+
+### 4.2 Time and Serialization
+
+- Stored dates use Firestore Timestamp unless a field is explicitly an epoch number.
+- Use cases convert Timestamp values into ISO strings or other serializable DTO values before returning data through a Server Action.
+- Frontend-facing contracts must not expose Firebase Admin classes.
+
+### 4.3 Soft Deletion
+
+| Record | Archive field |
+|---|---|
+| users, terms, events | isDeleted |
+| feeItems, fees, clearanceStatus, proofOfPayments | isArchived |
+| fines parent | metadata.isArchived |
+| fineItems | isArchived and, in some legacy records, metadata.isArchived |
+
+Normal application workflows do not physically delete business records.
+
+### 4.4 Denormalized Fields
+
+Firestore has no server-side joins. Student and organization names may be copied into operational documents for display and historical stability.
+
+New organization-issued `events`, `eventAttendees`, `feeItems`, `fees`, `fines`, `clearanceStatus`, and `proofOfPayments` documents store `orgName` as a display snapshot. Fine items inherit the organization from their parent fine. Authorization always uses `orgId`, never `orgName`.
+
+Existing records may not contain `orgName`. During migration, readers resolve a missing snapshot through one controlled organization lookup or a bounded preloaded organization map. Existing records may be backfilled separately; normal reads must not perform an unbounded N+1 lookup.
+
+### 4.5 Atomicity
+
+Use a Firestore transaction or batch when one business operation must update multiple records consistently. Examples include:
+
+- activating one term while deactivating another;
+- submitting a proof and marking selected obligations pending;
+- verifying a payment and updating balances, history, and clearance; and
+- generating fines and their corresponding clearance blockers.
+
+---
+
+## 5. Shared Firestore Collections
+
+Question marks indicate optional or migration fields. Fields not listed here may exist in CORAL for admin-only workflows.
+
+### 5.1 users
+
+**Document ID:** Firebase UID
+
+| Field | Type | Notes |
 |---|---|---|
-| `AY` | `string` | Academic Year format `YYYY-YYYY` (e.g. `"2025-2026"`) |
-| `semester` | `"1st" \| "2nd"` | Active semester indicator |
-| `isActive` | `boolean` | Active flag (partition key for current fees, fines, clearance) |
-| `isDeleted` | `boolean` | Soft-delete flag |
-| `metadata.createdAt` | `Timestamp` | Creation timestamp |
-| `metadata.updatedAt` | `Timestamp` | Last modification timestamp |
+| studentId | string | University student number |
+| email | string | Unique account email |
+| firstName | string | Student given name |
+| lastName | string | Student surname |
+| programId | string | Reference to programs |
+| facultyId | string | Reference to faculties |
+| orgId | string | Primary organization reference |
+| role | "user" / "admin" / "super-admin" | Student Portal accepts "user" only |
+| accessLevel | 1 / 2 / 3 | Present in CORAL; not yet exposed by the student session type |
+| status | "pending" / "approved" | Account eligibility |
+| yearLevel | integer | Student value from 1 through 6 |
+| isDeleted | boolean | Account soft-delete flag |
+| corURL? | string | Registration document URL |
+| createdAt | Timestamp | Creation time |
+| updatedAt | Timestamp | Last update |
+| registrationAt? | Timestamp | Registration submission time |
 
----
+When a user is soft-deleted, related unpaid fees, fines, and clearance records are archived by the administrative system.
 
-### 4.3 `events`
-* **Doc ID:** Auto-generated  
-* **Purpose:** Academic, institutional, and student organization events.
+The Student Portal may update only `firstName`, `lastName`, `programId`, and `yearLevel`. The server validates the selected program and derives the corresponding `facultyId` and primary `orgId`; the browser cannot directly assign either derived identifier.
 
-| Field | Type | Description |
+A valid student-submitted program change takes effect immediately and currently requires no administrative approval. The profile mutation must update `programId`, derived `facultyId`, derived primary `orgId`, and `updatedAt` as one controlled operation, then invalidate all student-affiliation and organization-entitlement caches. Subsequent reads use the new affiliation. Historical snapshots in already-issued attendance and financial records are not rewritten.
+
+Keep approval policy in the profile service rather than in the component, action, or Firestore use case. The current policy authorizes an immediate update after validation. A later policy may create a pending change request instead, while preserving the same Action → Service → Use Case boundary and the existing profile field contract.
+
+### 5.2 organizations
+
+**Document ID:** Auto-generated
+
+| Field | Type | Notes |
 |---|---|---|
-| `name` | `string` | Event title |
-| `date` | `Timestamp` | Event scheduled date & start time |
-| `location` | `string` | Physical or virtual venue |
-| `note` | `string?` | Guidelines or special instructions |
-| `majorEvent` | `boolean` | High-importance flag (often determines fine severity) |
-| `fineTypeId` | `string` | FK → `fineTypes` (Fine policy applied on non-attendance) |
-| `orgId` | `string` | FK → `organizations` |
-| `programId` | `string?` | Program scope (null for campus-wide events) |
-| `facultyId` | `string?` | Faculty scope (null for campus-wide events) |
-| `accessLevelEvent` | `1 \| 2 \| 3` | Scope level (`1`: Program, `2`: Faculty, `3`: University) |
-| `status` | `"upcoming" \| "ongoing" \| "completed" \| "archived"` | Dynamic event lifecycle status |
-| `attendees` | `number` | Atomic running count of checked-in attendees |
-| `academicYear` | `string` | Linked Academic Year (e.g. `"2025-2026"`) |
-| `semester` | `string` | Linked Semester (`"1st"` or `"2nd"`) |
-| `finesGenerated` | `boolean` | `true` once fine generation batch has executed |
-| `manuallyCompleted`| `boolean` | Locks status against auto-calculation |
-| `timeInStart` / `End` | `string?` | Check-in window time format (`"HH:MM"`) |
-| `timeOutStart` / `End`| `string?` | Check-out window time format (`"HH:MM"`) |
-| `isDeleted` | `boolean` | Soft-delete flag |
+| name | string | Unique display name |
+| shortName | string | Abbreviation |
+| facultyId? | string | Used for Level 2 |
+| programId? | string | Used for Level 1 |
+| accessLevel | 1 / 2 / 3 | Population scope |
+| subscribed | boolean | Current Premium Student Portal entitlement flag |
+| isArchived | boolean | Archive flag |
+| users? | string[] | Admin user UIDs |
+| orgLogoUrl? | string | Logo URL |
+| metadata.createdAt | Timestamp | Creation time |
+| metadata.updatedAt | Timestamp | Last update |
 
----
+`subscribed === true` means the organization has Premium access and may expose its eligible records in this portal. `subscribed === false` excludes all of its records and actions from this portal. Optional `subscriptionId` and `subscriptionTier` properties found in a TypeScript type are not used by the current authorization contract.
 
-### 4.4 `eventAttendees`
-* **Doc ID:** Auto-generated  
-* **Purpose:** Individual student attendance log per event.
+### 5.3 programs and faculties
 
-| Field | Type | Description |
+**programs**
+
+| Field | Type |
+|---|---|
+| name | string |
+| acronym? | string |
+| facultyId | string |
+
+**faculties**
+
+| Field | Type |
+|---|---|
+| name | string |
+| acronym | string |
+
+### 5.4 terms
+
+**Document ID:** Auto-generated
+
+| Field | Type | Notes |
 |---|---|---|
-| `eventId` | `string` | FK → `events` |
-| `userId` | `string` | FK → `users` (Auth UID) |
-| `studentId` | `string` | Denormalized university student ID |
-| `student` | `object?` | Profile snapshot at check-in time |
-| `timeIn` | `Timestamp?` | Time-in scan timestamp |
-| `timeOut` | `Timestamp?` | Time-out scan timestamp |
-| `status` | `"partially present" \| "present"` | `"present"` only if both `timeIn` & `timeOut` exist |
-| `remark` | `string?` | System note (e.g., cross-program attendance) |
-| `orgId` | `string` | FK → `organizations` |
+| AY | string | Format YYYY-YYYY |
+| semester | "1st" / "2nd" | Academic semester |
+| isActive | boolean | Exactly one active term is intended |
+| isDeleted | boolean | Soft-delete flag |
+| metadata.createdAt | Timestamp | Creation time |
+| metadata.updatedAt | Timestamp | Last update |
 
----
+Activating a term must deactivate the previous active term atomically.
 
-### 4.5 `feeItems` (Templates) & `fees` (Student Ledger)
+### 5.5 events
 
-#### `feeItems` (Catalog)
-* **Doc ID:** Auto-generated  
-* **Purpose:** Organization fee definitions for a specific academic term.
+**Document ID:** Auto-generated
 
-| Field | Type | Description |
+| Field | Type | Notes |
 |---|---|---|
-| `id` | `string` | Document ID |
-| `title` | `string` | Fee title (e.g. `"Org Membership Fee"`) |
-| `amount` | `number` | Assessment amount |
-| `feeType` | `string` | Categorization tag |
-| `description` | `string?` | Fee breakdown description |
-| `dueDate` | `Timestamp?` | Payment deadline |
-| `isRequiredForClearance` | `boolean` | If `true`, unpaid balance blocks clearance |
-| `orgId` | `string` | FK → `organizations` |
-| `academicYear` / `semester`| `string` | Term linkage |
-| `totalStudents` | `number` | Running count of assigned students |
-| `isArchived` | `boolean` | Archive status |
+| name | string | Event title |
+| date | Timestamp | Event date and start |
+| location | string | Venue |
+| note? | string | Instructions |
+| majorEvent | boolean | Significance flag |
+| fineTypeId? | string | Required only when the event can generate fines; absent for non-fining events |
+| orgId | string | Organization reference |
+| orgName | string | Required on new writes; may be absent in legacy data |
+| programId? | string | Level 1 scope |
+| facultyId? | string | Level 2 scope |
+| accessLevelEvent | 1 / 2 / 3 | Event population scope |
+| status | "upcoming" / "ongoing" / "completed" / "archived" | Lifecycle state |
+| attendees | number | Attendance counter |
+| academicYear | string | Term linkage |
+| semester | string | Term linkage |
+| isDeleted | boolean | Soft-delete flag |
+| finesGenerated | boolean | Fine-generation lock |
+| manuallyCompleted | boolean | Manual completion lock |
+| timeInStart? | string | HH:MM |
+| timeInEnd? | string | HH:MM |
+| timeOutStart? | string | HH:MM |
+| timeOutEnd? | string | HH:MM |
+| createdAt | Timestamp | Creation time |
 
-#### `fees` (Student Instances)
-* **Doc ID:** Auto-generated  
-* **Purpose:** Individual student fee obligation.
+### 5.6 eventAttendees
 
-| Field | Type | Description |
+**Document ID:** Auto-generated
+
+| Field | Type | Notes |
 |---|---|---|
-| `orgId` | `string` | FK → `organizations` |
-| `userId` | `string` | FK → `users` (Student UID) |
-| `studentId` | `string` | Denormalized Student ID |
-| `userName` | `string` | Denormalized student full name |
-| `feeItemId` | `string` | FK → `feeItems` template |
-| `title` | `string` | Copied fee title |
-| `amount` | `number` | Total assessed fee |
-| `paidAmount` | `number` | Total verified payments |
-| `balance` | `number` | `amount - paidAmount` |
-| `status` | `"unpaid" \| "partial" \| "paid" \| "pending"` | Current payment status |
-| `dueDate` | `Timestamp?` | Due date |
-| `isRequiredForClearance` | `boolean` | Clearance blocker indicator |
-| `academicYear` / `semester`| `string` | Term linkage |
-| `isArchived` | `boolean` | Archival flag |
+| eventId | string | Reference to events |
+| userId | string | Firebase UID ownership key |
+| studentId | string | Student-number snapshot |
+| student? | object | Profile snapshot at attendance time |
+| timeIn? | Timestamp | Check-in |
+| timeOut? | Timestamp | Check-out |
+| status | "partially present" / "present" | Stored attendance state |
+| remark? | string | Attendance note |
+| orgId | string | Organization reference |
+| orgName | string | Required on new writes; may be absent in legacy data |
 
-#### Subcollection: `fees/{feeId}/paymentHistory`
-* **Doc ID:** Auto-generated  
-* **Fields:** `paymentNumber` (`number`), `amount` (`number`), `paymentMethod` (`"gcash" | "cash" | "bank_transfer" | "waiver"`), `paymentProofId` (`string`), `status` (`"verified" | "rejected" | "pending"`), `paidAt` (`Timestamp`), `verifiedBy` (`string?`), `notes` (`string?`).
+An absence is not stored as an eventAttendees status. The Student Portal derives an absent history item from an eligible fine item connected to the event.
 
----
+### 5.7 feeItems
 
-### 4.6 `fineTypes`, `fines` & `fineItems`
+**Document ID:** Auto-generated
 
-```
-┌────────────────────────────────────────────────────────┐
-│ fines (Parent Envelope Doc per Student per Term)       │
-│ • accumulatedAmount, paidAmount, waivedAmount, balance │
-│ • status: "unpaid" | "partial" | "paid" | "waived"     │
-└──────────────────────────┬─────────────────────────────┘
-                           │ 1:N Subcollection
-                           ▼
-┌────────────────────────────────────────────────────────┐
-│ fines/{fineId}/fineItems (Individual Infraction Docs)  │
-│ • fineTypeId, eventId, amount, reason, itemNumber      │
-│ • isPaid, isWaived, isPending                          │
-└────────────────────────────────────────────────────────┘
-```
+| Field | Type |
+|---|---|
+| id | string |
+| title | string |
+| amount | number |
+| feeType | string |
+| description? | string |
+| dueDate? | Timestamp |
+| isRequiredForClearance | boolean |
+| orgId | string |
+| orgName | string display snapshot; required on new writes, may be absent in legacy data |
+| academicYear | string |
+| semester | string |
+| totalStudents | number |
+| isArchived | boolean |
+| createdAt | Timestamp |
+| updatedAt | Timestamp |
 
-#### `fineTypes`
-* **Doc ID:** Auto-generated  
-* **Fields:** `name` (`string`), `description` (`string`), `defaultAmount` (`number`), `requiresTimeIn` (`boolean`), `requiresTimeOut` (`boolean?`), `majorEventsOnly` (`boolean`), `orgId` (`string`).
+### 5.8 fees
 
-#### `fines` (Parent Document)
-* **Doc ID:** Auto-generated (One per student per org per term)
+**Document ID:** Auto-generated; one student instance per assigned fee item
 
-| Field | Type | Description |
+| Field | Type |
+|---|---|
+| orgId | string |
+| orgName | string display snapshot; required on new writes, may be absent in legacy data |
+| userId | string |
+| userName | string |
+| studentId | string |
+| feeItemId | string |
+| feeType | string |
+| title | string |
+| amount | number |
+| paidAmount | number |
+| balance | number |
+| status | "unpaid" / "partial" / "paid" / "pending" |
+| dueDate? | Timestamp |
+| isRequiredForClearance | boolean |
+| eventId? | string |
+| description? | string |
+| createdBy | string |
+| academicYear | string |
+| semester | string |
+| isArchived | boolean |
+| createdAt | Timestamp |
+| updatedAt | Timestamp |
+
+**Subcollection:** fees/{feeId}/paymentHistory
+
+| Field | Type |
+|---|---|
+| id | string |
+| paymentNumber | number |
+| amount | number |
+| paymentMethod | "gcash" / "cash" / "bank_transfer" / "waiver" |
+| paymentProofId | string |
+| status | "verified" / "rejected" / "pending" |
+| paidAt | Timestamp |
+| verifiedBy? | string |
+| verifiedByName? | string |
+| verifiedAt? | Timestamp |
+| rejectionReason? | string |
+| notes? | string |
+| createdAt | Timestamp |
+
+### 5.9 fineTypes
+
+| Field | Type |
+|---|---|
+| name | string |
+| description | string |
+| defaultAmount | number |
+| requiresTimeIn | boolean |
+| requiresTimeOut? | boolean |
+| majorEventsOnly | boolean |
+| orgId | string |
+
+### 5.10 fines
+
+**Document ID:** Auto-generated parent per student, organization, and term
+
+| Field | Type |
+|---|---|
+| orgId | string |
+| orgName | string display snapshot; required on new writes, may be absent in legacy data |
+| userId | string |
+| userName | string |
+| studentId | string |
+| academicYear | string |
+| semester | string |
+| accumulatedAmount | number |
+| paidAmount | number |
+| balance | number |
+| status | "unpaid" / "partial" / "paid" / "pending" / "waived" |
+| fineItemsCount | number |
+| firstFineIssuedAt? | Timestamp |
+| lastFineIssuedAt? | Timestamp |
+| dueDate? | Timestamp |
+| waivedAmount? | number |
+| waivedBy? | string |
+| waivedReason? | string |
+| waivedAt? | Timestamp |
+| remarks? | string |
+| metadata.createdAt | Timestamp |
+| metadata.updatedAt | Timestamp |
+| metadata.isArchived | boolean |
+
+**Subcollection:** fines/{fineId}/fineItems
+
+| Field | Type |
+|---|---|
+| itemNumber | number |
+| fineTypeId | string |
+| fineTypeName | string |
+| eventId | string |
+| eventName | string |
+| eventDate | Timestamp |
+| amount | number |
+| reason | string |
+| issuedBy | string |
+| issuedAt | Timestamp |
+| isWaived | boolean |
+| waivedBy? / waivedReason? / waivedAt? | corresponding types |
+| isPaid | boolean |
+| isPending | boolean |
+| isArchived | boolean |
+| parentFineId | string |
+| userId | string |
+| studentId | string |
+| academicYear | string |
+| semester | string |
+| metadata.createdAt? | Timestamp |
+| metadata.updatedAt? | Timestamp |
+| metadata.isArchived? | boolean |
+
+Fine appeals are not supported by the current Student Portal. Legacy appeal-like fields, if present, are read-only historical data and must not be used to infer a supported workflow. Administrative fine waivers remain supported through `isWaived` and the corresponding waiver metadata.
+
+**Subcollection:** fines/{fineId}/paymentHistory uses the same payment-history contract as fees.
+
+### 5.11 clearanceStatus
+
+**Document ID:** Deterministic student + organization + term key.
+
+Current CORAL construction concatenates userId, orgId when present, and an AY-semester suffix. All applications must use the shared ID builder rather than reproducing the string ad hoc.
+
+| Field | Type |
+|---|---|
+| id | string |
+| userId | string |
+| orgId | string |
+| orgName | string display snapshot; required on new writes, may be absent in legacy data |
+| studentId | string |
+| userName | string |
+| academicYear | string |
+| semester | string |
+| status | "cleared" / "not_cleared" / "pending" |
+| isArchived | boolean |
+| visibility | "public" / "private" |
+| blockingItems | Record<string, BlockingItem> |
+| clearanceDate? | Timestamp |
+| lastCalculatedAt? | Timestamp |
+| startDate | Timestamp |
+| dueDate | Timestamp |
+| createdAt | Timestamp |
+| updatedAt | Timestamp |
+
+**BlockingItem**
+
+| Field | Type |
+|---|---|
+| type | "fees" / "fines" |
+| referenceId | string |
+| parentFineId? | string |
+| title | string |
+| balance | number |
+| status | "unpaid" / "paid" |
+| paymentHistory? | array |
+| pendingReview | boolean |
+| isRequiredForClearance | boolean |
+| academicYear | string |
+| semester | string |
+
+### 5.12 proofOfPayments
+
+**Document ID:** Auto-generated
+
+| Field | Type |
+|---|---|
+| id | string |
+| orgId | string |
+| orgName | string display snapshot; required on new writes, may be absent in legacy data |
+| userId | string |
+| studentId | string |
+| userName | string |
+| paymentType | "fees" / "fines" / "bulk" |
+| referenceId | string |
+| paymentHistoryId | string or string[] |
+| amount | number |
+| paymentMethod | "gcash" / "cash" / "bank_transfer" / "waiver" |
+| referenceNumber? | string |
+| senderNumber? | string |
+| storagePath | string private Storage object path for new receipt uploads |
+| imageUrl? | string legacy receipt location; new writes must not store a permanent public URL |
+| status | "pending" / "verified" / "rejected" |
+| submittedAt | Timestamp |
+| verifiedBy? | string |
+| verifiedByName? | string |
+| verifiedAt? | Timestamp |
+| rejectionReason? | string |
+| notes? | string |
+| metadata.items? | array |
+| itemKeys | string[] lookup keys for the selected obligations |
+| receiptCode? | string |
+| isArchived | boolean |
+| academicYear | string |
+| semester | string |
+| updatedAt | Timestamp |
+
+For compatibility with the existing administrative portal, `itemKeys` contains:
+
+- `fees.feeItemId` for each selected fee; and
+- the parent `fines` document ID for each selected fine item.
+
+`itemKeys` is a coarse lookup aid, not the authoritative allocation ledger. Exact selected records are stored in `metadata.items`, where each entry includes `paymentType`, the selected record `refId`, `parentFineId` for a fine item, the applied amount, and its payment-history reference. Duplicate lookup keys should be removed before writing the proof.
+
+Receipt upload is write-only from the student’s perspective after submission; student re-download is not supported. The Storage object is not public. Retrieval must pass through a backend operation that verifies the requester is an authorized administrator or payment verifier for the proof’s `orgId`; only then may the server stream the object or issue a short-lived signed URL. The Student Portal shows proof status and payment metadata without returning the raw receipt or its Storage path.
+
+### 5.13 audit_logs
+
+| Field | Type | Notes |
 |---|---|---|
-| `orgId` | `string` | Organization ID |
-| `userId` | `string` | Student Auth UID |
-| `studentId` | `string` | University Student ID |
-| `academicYear` / `semester` | `string` | Academic term |
-| `accumulatedAmount` | `number` | Sum of all child `fineItems.amount` |
-| `paidAmount` | `number` | Verified payments applied |
-| `waivedAmount` | `number` | Total excused fine amount |
-| `balance` | `number` | `accumulatedAmount - paidAmount - waivedAmount` |
-| `status` | `"unpaid" \| "partial" \| "paid" \| "pending" \| "waived"` | Fine status |
-| `fineItemsCount` | `number` | Total number of infractions |
-| `firstFineIssuedAt` / `lastFineIssuedAt` | `Timestamp?` | Infraction timeline markers |
+| userId | string | Firebase UID, "anonymous", or "unknown" |
+| action | string | feature:verb naming |
+| success | boolean | Outcome |
+| error? | string | Sanitized failure |
+| timestamp | number | Epoch milliseconds in current implementation |
 
-#### Subcollection: `fines/{fineId}/fineItems`
-* **Fields:** `itemNumber` (`number`), `fineTypeId` (`string`), `fineTypeName` (`string`), `eventId` (`string`), `eventName` (`string`), `eventDate` (`Timestamp`), `amount` (`number`), `reason` (`string`), `issuedBy` (`string`), `isWaived` (`boolean`), `isPaid` (`boolean`), `isPending` (`boolean`), `parentFineId` (`string`).
+### 5.14 stats
+
+**Document ID:** AY-semester-orgId
+
+This CORAL-owned aggregate contains organization and term totals for students, fees, fines, and collections. The Student Portal should derive student-specific values from owned records unless an explicitly student-scoped aggregate is introduced.
 
 ---
 
-### 4.7 `clearanceStatus`
-* **Doc ID:** Deterministic Compound Key: `${userId}${orgId}:${AY}-${semester}` (e.g. `usr_123org_456:2025-2026-1st`)
-* **Purpose:** Single source of truth for student semester clearance per organization.
-* **Per-Org Partitioning:** Because a student can belong to multiple organizations (e.g. College Org [Level 2] and Central Apex [Level 3]), each organization maintains an independent `clearanceStatus` record for the student per term. Querying `clearanceStatus` where `userId == userId` provides the full set of organization clearance states and their corresponding `blockingItems` checklists.
+## 6. Firestore Access Patterns
 
-| Field | Type | Description |
-|---|---|---|
-| `id` | `string` | Compound deterministic document ID |
-| `userId` | `string` | Student Auth UID |
-| `orgId` | `string` | Organization ID |
-| `studentId` | `string` | University Student ID |
-| `userName` | `string` | Student Full Name |
-| `academicYear` / `semester` | `string` | Academic term |
-| `status` | `"cleared" \| "not_cleared" \| "pending"` | Calculated clearance status |
-| `blockingItems` | `Record<string, BlockingItem>` | Keyed map of unresolved fees and fine items |
-| `clearanceDate` | `Timestamp?` | Timestamp when status became `"cleared"` |
-| `lastCalculatedAt` | `Timestamp?` | Last calculation run timestamp |
-| `isArchived` | `boolean` | Archival status |
+### 6.1 Calling Firestore from a Feature
 
-#### Structure of `blockingItems` Map:
+Frontend files do not call Firestore directly.
 
-```typescript
-interface BlockingItem {
-  type: "fees" | "fines"
-  referenceId: string            // feeId or fineItemId
-  parentFineId?: string          // Required for fineItems
-  title: string                  // e.g. "College Night Fee" / "Absent: General Assembly"
-  balance: number                // Outstanding balance for this item
-  status: "unpaid" | "paid"
-  pendingReview: boolean         // true when student has submitted proof under review
-  isRequiredForClearance: boolean
-  academicYear: string
-  semester: string
-}
-```
+    Component
+      → getFeatureAction(input)
+      → withAuth verifies the student
+      → getFeatureService(authenticated context, input)
+      → getFeatureUseCase(authenticated UID, validated filters)
+      → adminDb query
 
----
+### 6.2 Document Read
 
-### 4.8 `proofOfPayments`
-* **Doc ID:** Auto-generated  
-* **Purpose:** Payment submissions uploaded by students or logged by cashiers.
+    const snapshot = await adminDb
+      .collection('users')
+      .doc(authenticatedUserId)
+      .get()
 
-| Field | Type | Description |
-|---|---|---|
-| `id` | `string` | Document ID |
-| `orgId` | `string` | Organization ID |
-| `userId` | `string` | Student Auth UID |
-| `studentId` | `string` | University Student ID |
-| `userName` | `string` | Student full name |
-| `paymentType` | `"fees" \| "fines" \| "bulk"` | Payment allocation category |
-| `referenceId` | `string` | Target `feeId`, `fineId`, or `"bulk_transaction"` |
-| `amount` | `number` | Transaction amount |
-| `paymentMethod` | `"gcash" \| "cash" \| "bank_transfer" \| "waiver"` | Payment channel |
-| `referenceNumber` | `string?` | GCash / Bank reference code |
-| `senderNumber` | `string?` | GCash mobile sender number (`09XXXXXXXXX`) |
-| `imageUrl` | `string?` | Firebase Storage screenshot link |
-| `status` | `"pending" \| "verified" \| "rejected"` | Verification workflow status |
-| `submittedAt` | `Timestamp` | Submission timestamp |
-| `verifiedBy` / `verifiedByName` | `string?` | Admin identifier who processed the proof |
-| `verifiedAt` | `Timestamp?` | Verification timestamp |
-| `rejectionReason` | `string?` | Mandatory note if rejected |
-| `itemKeys` | `string[]` | Array of `feeItemIds` covered (enables `array-contains` queries) |
+### 6.3 Student-Owned Query
 
----
+    const snapshot = await adminDb
+      .collection('fees')
+      .where('userId', '==', authenticatedUserId)
+      .where('isArchived', '==', false)
+      .where('academicYear', '==', academicYear)
+      .where('semester', '==', semester)
+      .get()
 
-### 4.9 `subscriptions`
-* **Doc ID:** Organization ID (`orgId`) or Auto-generated with `orgId` field
-* **Purpose:** Single source of truth for organization tier operational capabilities.
+Every owned query uses the verified UID. studentId is never substituted for userId.
 
-| Field | Type | Description |
-|---|---|---|
-| `orgId` | `string` | FK → `organizations` |
-| `tier` | `"basic" \| "plus" \| "premium"` | Capability tier: `"basic"` (Events/Attendance only), `"plus"` / `"premium"` (Full Fees, Fines, Clearance & Online Payments) |
-| `status` | `"active" \| "inactive" \| "expired"` | Subscription status |
-| `startDate` | `Timestamp?` | Subscription start timestamp |
-| `endDate` | `Timestamp?` | Subscription expiry timestamp |
+Before returning results, the service resolves the organization IDs that are both:
 
----
+- active and `subscribed === true`; and
+- within the student’s current program, faculty, or university population scope.
 
-### 4.10 `audit_logs`
-* **Doc ID:** Auto-generated  
-* **Purpose:** Immutable, append-only security and operational audit trail.
+Every organization-derived record must match that eligible set. This check applies even when a record is loaded directly by document ID. Centralize this resolution in one organization-capability service so events, attendance, fees, fines, clearance, payments, and dashboard summaries cannot interpret Premium eligibility differently.
 
-| Field | Type | Description |
-|---|---|---|
-| `userId` | `string` | Auth UID, `"anonymous"`, or `"unknown"` |
-| `action` | `string` | Standardized `feature:verb` (e.g. `'fees:submit'`, `'auth:signout'`) |
-| `success` | `boolean` | Execution outcome |
-| `error` | `string?` | Sanitized error message if failed |
-| `timestamp` | `number` | Epoch millisecond timestamp |
+### 6.4 Nested Subcollection
 
----
+    const snapshot = await adminDb
+      .collection('fines')
+      .doc(fineId)
+      .collection('fineItems')
+      .get()
 
-## 5. Core Business Engines & State Machines
+Before using a parent document ID supplied by a request, the service/use case must prove that the parent belongs to the authenticated student.
 
-### 5.1 Events & Attendance Engine
+### 6.5 Write and Transaction
 
-```
-[Event Date Check] ──► Status Auto-Determination:
-    ├── date < today                ──► "completed"
-    ├── date == today               ──► "ongoing"
-    └── date > today                ──► "upcoming"
-        * "archived" and "manuallyCompleted" events are preserved.
-
-[Attendance Logging & Ledger Resolution]
-    ├── Time-In + Time-Out          ──► status = "present"
-    ├── Time-In Only                ──► status = "partially present"
-    └── No check-in + Infraction    ──► status = "absent" (derived from fines/{fineId}/fineItems)
-        * Unified Ledger merges eventAttendees and fineItems with orgName enrichment.
-        * Events Catalog strictly scopes Level 1 (Program) & Level 2 (Faculty) by student affiliation.
-```
-
----
-
-### 5.2 Fine Generation Engine
-
-When an event is finalized, non-attending students receive itemized fines based on the event's `fineType`:
-
-```
-Admin executes generateFinesOnEvent(event):
-   │
-   ├─► 1. Query absent members (no record in eventAttendees)
-   │      Query partial members (timeIn present, timeOut missing)
-   │
-   ├─► 2. Compute Infraction Amounts:
-   │      • Full Absence: fineType.defaultAmount * (requiresTimeOut ? 2 : 1)
-   │      • Partial Absence: fineType.defaultAmount
-   │
-   ├─► 3. Batch Writes (20 students / batch):
-   │      a. Create doc in fines/{fineId}/fineItems
-   │      b. Upsert clearanceStatus with fineItem added to blockingItems
-   │      c. Recalculate parent fine totals (accumulatedAmount & balance)
-   │
-   ├─► 4. Lock Event: set event.finesGenerated = true
-   └─► 5. Trigger Clearance Recalculation for all affected students
-```
-
----
-
-### 5.3 Clearance State Machine
-
-The clearance engine computes a 3-state resolution from the student's `blockingItems` map:
-
-```
-                            ┌────────────────────────┐
-                            │ Evaluate blockingItems │
-                            └───────────┬────────────┘
-                                        │
-             ┌──────────────────────────┴──────────────────────────┐
-             ▼                                                     ▼
-   All required items have                               Any required item has
-   balance == 0 or paid                                  balance > 0 & unpaid
-             │                                                     │
-             ▼                                                     ▼
-     ┌───────────────┐                               ┌───────────────────────────┐
-     │  "cleared"    │                               │ Check pendingReview flag  │
-     └───────────────┘                               └─────────────┬─────────────┘
-                                                                   │
-                                                ┌──────────────────┴──────────────────┐
-                                                ▼                                     ▼
-                                       At least 1 item has                   No item in review
-                                       pendingReview == true                 (pure unpaid balance)
-                                                │                                     │
-                                                ▼                                     ▼
-                                       ┌─────────────────┐                   ┌─────────────────┐
-                                       │   "pending"     │                   │  "not_cleared"  │
-                                       └─────────────────┘                   └─────────────────┘
-```
-
----
-
-### 5.4 Payment & Clearance Settlement Workflow (Per-Organization Hub on `/clearance`)
-
-```
-[Student Action in Student Portal]
-Student navigates to /clearance (Built-In Payment Portal):
-   1. Reviews clearance checklist segmented by affiliated Plus & Premium Organizations
-   2. Clicks "Pay [Org Name] Obligations" on the specific organization card
-   3. Selects unpaid fee/fine items belonging exclusively to that orgId
-   4. Selects payment method (GCash, Bank Transfer, Cash)
-   5. Enters reference number & uploads receipt image to Firebase Storage (/proofOfPayments/{orgId}/{userId}/{ts}.png)
-   6. Action executes submitPaymentProofAction({ orgId, selectedItemKeys, amount, ... }):
-      • Creates proofOfPayments doc with matching orgId (status: "pending", itemKeys: selectedItemKeys)
-      • Sets clearanceStatus.blockingItems[id].pendingReview = true for selected items in that org's clearance
-      • Updates corresponding fees docs (status = "pending") and fineItems docs (isPending = true)
-      • Executes recalculateClearanceStatus(userId, orgId, term) ──► transitions org status to "PENDING REVIEW ⏳"
-
-[Officer Action in CORAL-USSC Admin Portal (Scoped per Org)]
-Officers/Treasurers of that specific orgId verify the transaction:
-   1. Firestore Transaction:
-      • proofOfPayments.status = "verified" (or cash receipt issued)
-      • fees/{feeId}.paidAmount += payment.amount
-      • fees/{feeId}.balance = amount - paidAmount
-      • Append fees/{feeId}/paymentHistory record
-      • clearanceStatus.blockingItems[feeId].balance = newBalance
-      • clearanceStatus.blockingItems[feeId].pendingReview = false
-   2. Recalculate clearance for that organization ──► If all balances 0 in that org, that org becomes "CLEARED"
-   3. Invalidate caches (clearance & fee records)
-
-[Student Portal Refresh]
-Student portal reflects verified payment history, 0 balance for that org, and updates overall clearance progress.
-```
-
----
-
-## 6. Caching & Performance Architecture
-
-### Next.js Caching in the Student Portal
-
-The Student Portal utilizes Next.js Server Function Caching (`'use cache'`) placed exclusively inside **read use cases**:
-
-```typescript
-// features/fees/usecases/get-my-fees.usecase.ts
-import { adminDb } from '@/lib/firebase/admin'
-import { cacheTag, cacheLife } from 'next/cache'
-
-interface GetMyFeesInput {
-  userId: string
-  academicYear?: string
-  semester?: string
-}
-
-export async function getMyFeesUseCase({ userId, academicYear, semester }: GetMyFeesInput) {
-  'use cache'
-  cacheTag(academicYear && semester ? `fees-${userId}-${academicYear}-${semester}` : `fees-${userId}`)
-  cacheLife('minutes') // Short TTL for financial records
-
-  let query = adminDb
-    .collection('fees')
-    .where('userId', '==', userId)
-    .where('isArchived', '==', false)
-
-  if (academicYear) query = query.where('academicYear', '==', academicYear)
-  if (semester) query = query.where('semester', '==', semester)
-
-  const snapshot = await query.get()
-  return snapshot.docs.map(d => ({ id: d.id, ...d.data() }))
-}
-```
-
-### Domain Caching Strategy
-
-| Domain | Cache Lifetime | Tag Pattern | Revalidation Trigger |
-|---|---|---|---|
-| **Active Term** | `hours` / Long | `active-term` | Admin updates active semester |
-| **All Terms List** | `hours` / Long | `terms-all` | Admin creates/archives term |
-| **Events Catalog** | `hours` / Long | `events-${academicYear}-${semester}` | New event published |
-| **Student Fees** | `minutes` / Short | `fees-${userId}` | Payment verified or fee assigned |
-| **Student Fines** | `minutes` / Short | `fines-${userId}` | Event fines generated or fine waived |
-| **Clearance Status**| `minutes` + Webhook | `clearance-${userId}` | Admin clearance update / payment review |
-| **Write Use Cases**| ❌ Never Cached | — | — |
-
----
-
-## 7. Audit Logging (Tiered Accounting)
-
-To eliminate unnecessary Firestore write costs while preserving compliance, logging is strictly tiered:
-
-```typescript
-// features/auth/usecases/log-action.usecase.ts
-import { adminDb } from '@/lib/firebase/admin'
-
-export interface LogEntry {
-  userId: string
-  action: string      // Format: 'domain:verb' (e.g. 'fines:appeal')
-  success: boolean
-  error?: string
-}
-
-export async function logAction(entry: LogEntry): Promise<void> {
-  try {
-    await adminDb.collection('audit_logs').add({
-      ...entry,
-      timestamp: Date.now(),
+    await adminDb.runTransaction(async transaction => {
+      // Re-read authoritative records.
+      // Validate ownership, organization, term, status, and amount.
+      // Apply all dependent writes atomically.
     })
-  } catch {
-    // Intentionally silent — logging failure must never block user operations
-  }
-}
-```
 
-### Logging Rules Matrix
+Payment and clearance mutations must not rely on values calculated only in the browser.
 
-| Event Category | Log Policy | Rationale |
-|---|---|---|
-| **Session / Auth Failure** | ✅ Always | Security signal (unauthenticated intrusion attempt) |
-| **System Exception / Error**| ✅ Always | Operational monitoring and triage |
-| **Data Mutation (Write)** | ✅ Always | Non-repudiation audit trail for all changes |
-| **Successful Read Query** | ❌ Skip | High-volume query noise; costs unnecessary writes |
+### 6.6 Query Design Rules
 
----
+- Filter student-owned data by userId before applying term filters.
+- Exclude soft-deleted or archived data.
+- Apply the active Premium-organization set in every organization-derived read and write.
+- Avoid issuing one Firestore request per result document.
+- Prefer bulk reads, bounded parallelism, or denormalized display fields for related records.
+- Add composite indexes for production query shapes.
+- Map all returned fields explicitly; do not spread raw Firestore data into frontend DTOs.
 
-## 8. Engineering Standards & Code Patterns
+### 6.7 Required Query Shapes and Indexes
 
-### Standard 1: Server Action Template (with Term Filter)
+At minimum, the intended portal needs indexes supporting:
 
-```typescript
-// features/fines/actions.ts
-'use server'
+| Collection | Query shape |
+|---|---|
+| events | isDeleted + academicYear + semester + date |
+| eventAttendees | userId + timeIn |
+| fees | userId + isArchived + academicYear + semester |
+| fines | userId + metadata.isArchived + academicYear + semester |
+| clearanceStatus | userId + isArchived + academicYear + semester |
+| proofOfPayments | userId + isArchived + submittedAt |
 
-import { withAuth } from '@/lib/firebase/with-auth'
-import { getMyFinesUseCase } from './usecases/get-my-fines.usecase'
-import type { ActionResult } from '@/types'
-import type { FineParent, TermFilter } from './types'
-
-export async function getMyFinesAction(filter?: TermFilter): Promise<ActionResult<FineParent | null>> {
-  return withAuth('fines:getSummary', async (userId) => {
-    const fines = await getMyFinesUseCase({ userId, ...filter })
-    return { ok: true, data: fines }
-  })
-}
-```
-
-### Standard 2: Mutation Action with Audit (e.g. Fine Appeal)
-
-```typescript
-// features/fines/actions/submit-appeal.ts
-'use server'
-
-import { withAuth } from '@/lib/firebase/with-auth'
-import { logAction } from '@/features/auth/usecases/log-action.usecase'
-import { submitFineAppealUseCase } from '../usecases/submit-fine-appeal.usecase'
-import type { ActionResult } from '@/types'
-
-export async function submitFineAppealAction(fineItemId: string, reason: string): Promise<ActionResult> {
-  return withAuth('fines:appeal', async (userId) => {
-    await submitFineAppealUseCase({ userId, fineItemId, reason })
-    
-    // Log mutation asynchronously (fire-and-forget)
-    void logAction({ userId, action: 'fines:appeal', success: true })
-    
-    return { ok: true, data: undefined }
-  })
-}
-```
-
-### Standard 3: Use Case Implementation Template
-
-```typescript
-// features/events/usecases/get-my-attendance.usecase.ts
-import { adminDb } from '@/lib/firebase/admin'
-import type { AttendanceRecord } from '../types'
-
-interface GetMyAttendanceInput {
-  userId: string
-}
-
-export async function getMyAttendanceUseCase(
-  input: GetMyAttendanceInput
-): Promise<AttendanceRecord[]> {
-  const snapshot = await adminDb
-    .collection('eventAttendees')
-    .where('userId', '==', input.userId)
-    .orderBy('timeIn', 'desc')
-    .get()
-
-  return snapshot.docs.map(doc => ({
-    id: doc.id,
-    ...doc.data(),
-  })) as AttendanceRecord[]
-}
-```
-
-### Standard 4: Shared Result Type
-
-```typescript
-// src/types/index.ts
-export type ActionResult<T = void> =
-  | { ok: true; data: T }
-  | { ok: false; error: string }
-```
+The repository currently has no confirmed deployed Firestore index manifest. Required indexes must be validated against actual queries before release.
 
 ---
 
-## 9. Firestore Composite Index Reference
+## 7. Domain State Rules
 
-The following compound indexes are required in `firestore.indexes.json` to support multi-field querying and sorting:
+### 7.1 Attendance
 
-```json
-{
-  "indexes": [
-    {
-      "collectionGroup": "events",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "isDeleted", "order": "ASCENDING" },
-        { "fieldPath": "orgId", "order": "ASCENDING" },
-        { "fieldPath": "academicYear", "order": "ASCENDING" },
-        { "fieldPath": "semester", "order": "ASCENDING" },
-        { "fieldPath": "date", "order": "DESCENDING" }
-      ]
-    },
-    {
-      "collectionGroup": "eventAttendees",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "userId", "order": "ASCENDING" },
-        { "fieldPath": "timeIn", "order": "DESCENDING" }
-      ]
-    },
-    {
-      "collectionGroup": "fees",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "userId", "order": "ASCENDING" },
-        { "fieldPath": "isArchived", "order": "ASCENDING" },
-        { "fieldPath": "academicYear", "order": "ASCENDING" },
-        { "fieldPath": "semester", "order": "ASCENDING" }
-      ]
-    },
-    {
-      "collectionGroup": "fines",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "userId", "order": "ASCENDING" },
-        { "fieldPath": "metadata.isArchived", "order": "ASCENDING" },
-        { "fieldPath": "academicYear", "order": "ASCENDING" },
-        { "fieldPath": "semester", "order": "ASCENDING" }
-      ]
-    },
-    {
-      "collectionGroup": "proofOfPayments",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "userId", "order": "ASCENDING" },
-        { "fieldPath": "isArchived", "order": "ASCENDING" },
-        { "fieldPath": "submittedAt", "order": "DESCENDING" }
-      ]
-    }
-  ]
-}
-```
+- timeIn and timeOut present → present.
+- only part of the required attendance present → partially present.
+- no attendance record plus a recognized event fine → absent in the unified student ledger.
+
+### 7.2 Clearance
+
+For required blocking items:
+
+1. If no unresolved item remains, status is cleared.
+2. If at least one unresolved item has `pendingReview` true, status is pending.
+3. Otherwise, status is not_cleared.
+
+Across organizations:
+
+1. Any not_cleared organization makes the overall result not_cleared.
+2. Otherwise, any pending organization makes the overall result pending.
+3. Otherwise, the result is cleared.
+
+This intentionally matches the existing USSC Connect Student Portal and administrative implementation. In a mixed case—one item pending and another still unpaid—the organization roll-up is pending, while both item-level states remain visible.
+
+### 7.3 Payment Submission
+
+A student payment submission is organization-scoped:
+
+1. Verify the authenticated student.
+2. Load selected obligations from Firestore.
+3. Verify ownership, organization, term, outstanding state, and eligibility for every selected item.
+4. Reject a selected item if it is settled or already has a pending proof.
+5. Use each selected item’s current outstanding balance and recalculate the total on the server.
+6. Create the proof record.
+7. Mark only the selected obligations as pending review.
+8. Recalculate the organization clearance state.
+9. Write an audit event.
+
+Students may select only a subset of payable obligations. This is a partial settlement of the organization’s overall balance, but each selected item contributes its full current outstanding balance. The student does not supply an arbitrary allocation, and the server-calculated total prevents overpayment.
+
+One obligation may belong to only one pending proof at a time. The availability check, proof creation, payment-history creation, and pending-state updates must be atomic so simultaneous or retried submissions cannot create duplicate active proofs.
+
+On rejection, the workflow must:
+
+- mark the proof and corresponding payment-history records rejected;
+- clear pending state only from the items carried by that proof;
+- preserve their outstanding balances;
+- store the rejection reason when supplied;
+- make the still-outstanding items payable again; and
+- recalculate clearance.
+
+On verification, a selected fine item becomes paid and a selected fee balance is reduced by the verified amount. A fee with a remaining balance stays partial and may be selected again when no proof is pending.
+
+Receipt uploads accept `image/jpeg`, `image/png`, `image/webp`, or `image/gif` and have a 5 MB maximum. File type and size are validated on the server. The server stores a private object path, not a permanent public download URL. Only an authorized administrator or verifier for the matching organization may retrieve the raw receipt through the protected backend flow defined in Section 5.12.
+
+Steps that must succeed or fail together belong in a transaction or controlled idempotent workflow.
 
 ---
 
-## 10. Summary of Architectural Commandments
+## 8. Caching, Audit, and Integration
 
-1. **Strict Ownership Scoping**: Never accept a student ID from client payload parameters. Always extract `userId` from the verified session in `withAuth()` and scope DB queries with `where("userId", "==", userId)`.
-2. **Server-Side Isolation**: `adminDb` and `adminAuth` are exclusively imported inside server-side code (`usecases/` and `lib/firebase/admin.ts`). Never leak Admin SDK to components.
-3. **Soft-Deletes Only**: Documents are never physically deleted via standard application flows; flag them with `isDeleted: true` or `isArchived: true`.
-4. **Fire-and-Forget Logging**: Always invoke `void logAction(...)` without `await` to avoid blocking user response latency.
-5. **No Pass-Through Boilerplate**: Keep simple 1-to-1 operations lean (Action directly calls Use Case). Only introduce a Service when coordinating business rules or multiple use cases.
+### 8.1 Caching
+
+- Only read use cases may be cached.
+- Cache keys and tags containing student data are scoped by authenticated UID and, where relevant, term.
+- Write workflows invalidate every affected base and term-specific tag.
+- Until cross-application invalidation exists, financial, proof-status, waiver, and clearance reads must be uncached or revalidated against Firestore on each page refresh.
+- Realtime listeners are not required; the next successful refresh must show completed administrative changes.
+- A cache miss or invalidation failure must not bypass authorization.
+
+### 8.2 Audit
+
+Always audit:
+
+- invalid or revoked sessions, eligibility failures, and other security-significant authentication events;
+- payment submissions and profile mutations;
+- system exceptions; and
+- other student-initiated writes.
+
+The routine absence of a session cookie is not persisted to `audit_logs`; it returns an authentication-required response without creating a Firestore write.
+
+Successful high-volume reads need not create audit documents.
+
+Audit failure must not expose internals to the student, but operational monitoring must make repeated audit failures visible to maintainers.
+
+### 8.3 Cross-Application Integration
+
+The separate CORAL-USSC administrative portal remains authoritative for:
+
+- event and attendance administration;
+- fee and fine creation;
+- fine waivers;
+- payment verification;
+- cashiering; and
+- administrative clearance updates.
+
+The Student Portal is authoritative only for the student request that initiates a payment-proof submission or permitted profile update. Both applications must use compatible field names, status transitions, IDs, and archive semantics.
+
+---
+
+## 9. Current Student Portal Implementation Coverage
+
+Implemented Firestore reads:
+
+- authenticated user lookup;
+- active and historical terms;
+- event lists and event details;
+- student attendance;
+- attendance-related fine parents and fine items;
+- student affiliation; and
+- audit-log writes.
+
+Not yet implemented as complete Action → Service → Use Case flows:
+
+- student fee ledger;
+- general fine ledger and waiver visibility;
+- clearance retrieval;
+- proof-of-payment submission;
+- subscription/capability resolution; and
+- student profile mutation.
+
+Existing implementation gaps must be resolved against ARCHITECTURE.md before these modules are considered complete.
+
+---
+
+## 10. Open Architecture and Schema Decisions
+
+| ID | Decision needed |
+|---|---|
+| AD-10 | Confirm the live Firestore schema and deployed composite indexes before implementing remaining writes. |
+
+---
+
+## 11. Architecture Commandments
+
+1. Authenticate first and derive ownership from the verified Firebase UID.
+2. Keep Firestore access in use cases and business policy in services.
+3. Never trust browser-supplied ownership, balance, status, or clearance values.
+4. Map Firestore documents explicitly into serializable DTOs.
+5. Preserve documented archive fields; they differ by collection.
+6. Use transactions or idempotent workflows for multi-document financial changes.
+7. Avoid N+1 reads and document required composite indexes.
+8. Treat CORAL and the Student Portal as one shared data contract.
+9. Enforce the Premium organization gate on every organization-derived read, total, detail, and mutation.
+10. Record unresolved schema choices explicitly rather than silently supporting two meanings.
+11. Verify the live schema before migration or production write implementation.
