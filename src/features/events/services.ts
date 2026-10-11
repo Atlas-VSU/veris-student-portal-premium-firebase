@@ -17,8 +17,13 @@ export function determineEventStatus(dateMillis: number, manuallyCompleted = fal
 
 function canStudentViewEvent(
   event: Event,
-  student: SessionUser
+  student: SessionUser,
+  eligibleOrganizationIds: ReadonlySet<string>
 ): boolean {
+  if (!event.orgId || !eligibleOrganizationIds.has(event.orgId)) {
+    return false
+  }
+
   if (event.accessLevelEvent === 3) {
     return true
   }
@@ -56,7 +61,11 @@ function presentEvent(event: Event): Event {
   }
 }
 
-export async function getEventsService(user: SessionUser, filter?: TermFilter): Promise<Event[]> {
+export async function getEventsService(
+  user: SessionUser,
+  eligibleOrganizationIds: readonly string[],
+  filter?: TermFilter
+): Promise<Event[]> {
   let academicYear = filter?.academicYear
   let semester = filter?.semester
 
@@ -73,23 +82,31 @@ export async function getEventsService(user: SessionUser, filter?: TermFilter): 
     academicYear,
     semester,
   })
+  const eligibleOrganizationIdSet = new Set(eligibleOrganizationIds)
 
   return rawEvents
-    .filter((event) => canStudentViewEvent(event, user))
+    .filter((event) => canStudentViewEvent(event, user, eligibleOrganizationIdSet))
     .map(presentEvent)
 }
 
-export async function getActiveEventsService(user: SessionUser): Promise<Event[]> {
-  return getEventsService(user)
+export async function getActiveEventsService(
+  user: SessionUser,
+  eligibleOrganizationIds: readonly string[]
+): Promise<Event[]> {
+  return getEventsService(user, eligibleOrganizationIds)
 }
 
 export async function getEventByIdService(
   user: SessionUser,
+  eligibleOrganizationIds: readonly string[],
   eventId: string
 ): Promise<Event | null> {
   const event = await getEventByIdUseCase({ eventId })
 
-  if (!event || !canStudentViewEvent(event, user)) {
+  if (
+    !event ||
+    !canStudentViewEvent(event, user, new Set(eligibleOrganizationIds))
+  ) {
     return null
   }
 

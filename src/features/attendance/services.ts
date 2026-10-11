@@ -1,9 +1,10 @@
-import { getEventByIdUseCase } from '@/features/events/usecases/get-event-by-id.usecase'
+import { getEventByIdService } from '@/features/events/services'
 import { getMyAttendanceUseCase } from './usecases/get-my-attendance.usecase'
 import { getMyAttendanceFinesUseCase } from './usecases/get-my-attendance-fines.usecase'
 import { getAttendanceFineItemsUseCase } from './usecases/get-attendance-fine-items.usecase'
 import { toSafeDate, toIsoString } from '@/lib/date-format'
 import { calculateAttendanceStats, matchesTerm } from './calculations'
+import type { SessionUser } from '@/features/auth/types'
 import type {
   AttendanceRecord,
   AttendanceStatus,
@@ -31,10 +32,23 @@ interface FineItemInfo {
   semester?: string
 }
 
-async function getStudentAbsenceFineItems(userId: string, filter?: TermFilter): Promise<FineItemInfo[]> {
+interface AttendanceServiceInput {
+  userId: string
+  user: SessionUser
+  eligibleOrganizationIds: readonly string[]
+  filter?: TermFilter
+}
+
+async function getStudentAbsenceFineItems(
+  userId: string,
+  eligibleOrganizationIds: ReadonlySet<string>,
+  filter?: TermFilter
+): Promise<FineItemInfo[]> {
   const fineParents = await getMyAttendanceFinesUseCase({ userId, filter })
   const itemGroups = await Promise.all(
-    fineParents.map(async (fine) => {
+    fineParents
+      .filter((fine) => eligibleOrganizationIds.has(fine.orgId))
+      .map(async (fine) => {
       const items = await getAttendanceFineItemsUseCase({ fineId: fine.id })
 
       return items.map((item) => ({
@@ -45,20 +59,27 @@ async function getStudentAbsenceFineItems(userId: string, filter?: TermFilter): 
         academicYear: fine.academicYear,
         semester: fine.semester,
       }))
-    })
+      })
   )
 
   return itemGroups.flat()
 }
 
 export async function getMyAttendanceHistoryService(
-  userId: string,
-  filter?: TermFilter
+  input: AttendanceServiceInput
 ): Promise<AttendanceHistoryItem[]> {
+  const eligibleOrganizationIdSet = new Set(input.eligibleOrganizationIds)
   const [records, absenceFines] = await Promise.all([
-    getMyAttendanceUseCase({ userId }),
-    getStudentAbsenceFineItems(userId, filter),
+    getMyAttendanceUseCase({ userId: input.userId }),
+    getStudentAbsenceFineItems(
+      input.userId,
+      eligibleOrganizationIdSet,
+      input.filter
+    ),
   ])
+  const eligibleRecords = records.filter((record) =>
+    eligibleOrganizationIdSet.has(record.orgId)
+  )
 
   const fineByEventId = new Map<string, FineItemInfo>()
   absenceFines.forEach((fine) => {
@@ -66,7 +87,7 @@ export async function getMyAttendanceHistoryService(
   })
 
   const eventIds = new Set<string>()
-  records.forEach((record) => {
+  eligibleRecords.forEach((record) => {
     if (record.eventId) eventIds.add(record.eventId)
   })
   absenceFines.forEach((fine) => {
@@ -75,7 +96,11 @@ export async function getMyAttendanceHistoryService(
 
   const eventEntries = await Promise.all(
     [...eventIds].map(async (eventId) => {
-      const event = await getEventByIdUseCase({ eventId })
+      const event = await getEventByIdService(
+        input.user,
+        input.eligibleOrganizationIds,
+        eventId
+      )
       return [eventId, event] as const
     })
   )
@@ -85,9 +110,9 @@ export async function getMyAttendanceHistoryService(
   const attendedEventIds = new Set<string>()
 
   // 1. Process Check-in records (Present / Partially Present)
-  for (const record of records) {
+  for (const record of eligibleRecords) {
     const event = eventById.get(record.eventId) || null
-    if (!matchesTerm(filter, event?.academicYear, event?.semester)) {
+    if (!event || !matchesTerm(input.filter, event.academicYear, event.semester)) {
       continue
     }
 
@@ -123,7 +148,7 @@ export async function getMyAttendanceHistoryService(
     }
 
     const event = eventById.get(fine.eventId) || null
-    if (!matchesTerm(filter, fine.academicYear, fine.semester)) {
+    if (!event || !matchesTerm(input.filter, fine.academicYear, fine.semester)) {
       continue
     }
 
@@ -160,18 +185,16 @@ export async function getMyAttendanceHistoryService(
 }
 
 export async function getRecentAttendanceService(
-  userId: string,
-  limit = 3
+  input: AttendanceServiceInput & { limit?: number }
 ): Promise<AttendanceHistoryItem[]> {
-  const history = await getMyAttendanceHistoryService(userId)
-  return history.slice(0, limit)
+  const history = await getMyAttendanceHistoryService(input)
+  return history.slice(0, input.limit ?? 3)
 }
 
 export async function getMyAttendanceOverviewService(
-  userId: string,
-  filter?: TermFilter
+  input: AttendanceServiceInput
 ): Promise<AttendanceOverview> {
-  const history = await getMyAttendanceHistoryService(userId, filter)
+  const history = await getMyAttendanceHistoryService(input)
   return {
     history,
     stats: calculateAttendanceStats(history),

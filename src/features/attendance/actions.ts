@@ -10,15 +10,25 @@ import type { ActionResult, AttendanceHistoryItem, AttendanceOverview, TermFilte
 export async function getMyAttendanceOverviewAction(
   filter?: TermFilter
 ): Promise<ActionResult<AttendanceOverview>> {
-  return withAuth('attendance:getOverview', async (userId) => {
-    const overview = await getMyAttendanceOverviewService(userId, filter)
+  return withAuth('attendance:getOverview', async (userId, user, eligibleOrganizationIds) => {
+    const overview = await getMyAttendanceOverviewService({
+      userId,
+      user,
+      eligibleOrganizationIds,
+      filter,
+    })
     return { ok: true, data: overview }
   })
 }
 
 export async function getRecentAttendanceAction(limit = 3): Promise<ActionResult<AttendanceHistoryItem[]>> {
-  return withAuth('attendance:getRecent', async (userId) => {
-    const recent = await getRecentAttendanceService(userId, limit)
+  return withAuth('attendance:getRecent', async (userId, user, eligibleOrganizationIds) => {
+    const recent = await getRecentAttendanceService({
+      userId,
+      user,
+      eligibleOrganizationIds,
+      limit,
+    })
     return { ok: true, data: recent }
   })
 }

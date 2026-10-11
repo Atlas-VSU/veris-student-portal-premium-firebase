@@ -1,6 +1,7 @@
 import 'server-only'
 
 import { adminAuth } from '@/lib/firebase/admin'
+import { getEligibleOrganizationIdsService } from '@/features/organizations/services'
 import { getSessionUserUseCase } from './usecases/get-session-user.usecase'
 import { isRecentSignIn, isTerminalSessionError } from './session-security'
 import type { SessionUser, SessionUserRecord } from './types'
@@ -80,8 +81,10 @@ export async function createStudentSessionService(idToken: string): Promise<{
     )
   }
 
-  const record = await getSessionUserUseCase({ userId: decodedToken.uid })
-  const user = requireEligibleStudent(record, decodedToken.uid, decodedToken.email)
+  const { user } = await getStudentAccessContextService(
+    decodedToken.uid,
+    decodedToken.email
+  )
   const sessionCookie = await adminAuth.createSessionCookie(idToken, {
     expiresIn: SESSION_DURATION_MS,
   })
@@ -93,8 +96,31 @@ export async function getSessionUserService(
   userId: string,
   fallbackEmail = ''
 ): Promise<SessionUser> {
+  const { user } = await getStudentAccessContextService(userId, fallbackEmail)
+  return user
+}
+
+export interface StudentAccessContext {
+  user: SessionUser
+  eligibleOrganizationIds: string[]
+}
+
+export async function getStudentAccessContextService(
+  userId: string,
+  fallbackEmail = ''
+): Promise<StudentAccessContext> {
   const record = await getSessionUserUseCase({ userId })
-  return requireEligibleStudent(record, userId, fallbackEmail)
+  const user = requireEligibleStudent(record, userId, fallbackEmail)
+  const eligibleOrganizationIds = await getEligibleOrganizationIdsService(user)
+
+  if (eligibleOrganizationIds.length === 0) {
+    throw new StudentSessionError(
+      'Your account is not currently covered by a Premium organization.',
+      userId
+    )
+  }
+
+  return { user, eligibleOrganizationIds }
 }
 
 export interface SessionRevocationResult {

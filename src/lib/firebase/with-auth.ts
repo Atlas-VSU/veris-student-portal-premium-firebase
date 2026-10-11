@@ -3,7 +3,7 @@ import 'server-only'
 import { cookies } from 'next/headers'
 import { adminAuth } from './admin'
 import {
-  getSessionUserService,
+  getStudentAccessContextService,
   StudentSessionError,
 } from '@/features/auth/services'
 import { logAction } from '@/features/auth/usecases/log-action.usecase'
@@ -12,7 +12,11 @@ import type { ActionResult } from '@/types'
 
 export async function withAuth<T>(
   action: string,
-  fn: (userId: string, user: SessionUser) => Promise<ActionResult<T>>
+  fn: (
+    userId: string,
+    user: SessionUser,
+    eligibleOrganizationIds: string[]
+  ) => Promise<ActionResult<T>>
 ): Promise<ActionResult<T>> {
   const cookieStore = await cookies()
   const sessionCookie = cookieStore.get('__session')?.value
@@ -39,8 +43,11 @@ export async function withAuth<T>(
   }
 
   let user: SessionUser
+  let eligibleOrganizationIds: string[]
   try {
-    user = await getSessionUserService(uid, fallbackEmail)
+    const context = await getStudentAccessContextService(uid, fallbackEmail)
+    user = context.user
+    eligibleOrganizationIds = context.eligibleOrganizationIds
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Student eligibility check failed.'
     void logAction({ userId: uid, action, success: false, error: message })
@@ -58,7 +65,7 @@ export async function withAuth<T>(
   }
 
   try {
-    return await fn(uid, user)
+    return await fn(uid, user, eligibleOrganizationIds)
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unexpected error.'
     void logAction({ userId: uid, action, success: false, error: message })
