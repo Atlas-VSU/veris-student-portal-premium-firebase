@@ -18,7 +18,6 @@ export async function withAuth<T>(
   const sessionCookie = cookieStore.get('__session')?.value
 
   if (!sessionCookie) {
-    void logAction({ userId: 'anonymous', action, success: false, error: 'Authentication required.' })
     return { ok: false, error: 'Authentication required.' }
   }
 
