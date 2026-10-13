@@ -40,7 +40,7 @@ export async function signInWithCredentials(
 
     return {
       ok: false,
-      error: message.startsWith('Firebase:') ? 'Invalid student credentials.' : message,
+      error: message.startsWith('Firebase:') ? 'Invalid student credentials.' : 'Unable to sign in. Please try again.',
     }
   } finally {
     // The HTTP-only cookie is the sole session authority after the token exchange.
