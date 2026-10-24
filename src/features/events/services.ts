@@ -1,6 +1,7 @@
 import { resolveTermFilterService } from '@/features/terms/services'
 import { getActiveEventsUseCase } from './usecases/get-active-events.usecase'
 import { getEventByIdUseCase } from './usecases/get-event-by-id.usecase'
+import { getEventsByIdsUseCase } from './usecases/get-events-by-ids.usecase'
 import { toSafeDate } from '@/lib/date-format'
 import type { SessionUser } from '@/features/auth/types'
 import type { Event, EventStatus, TermFilter } from './types'
@@ -84,6 +85,19 @@ export async function getActiveEventsService(
   eligibleOrganizationIds: readonly string[]
 ): Promise<Event[]> {
   return getEventsService(user, eligibleOrganizationIds)
+}
+
+export async function getEventsByIdsService(
+  user: SessionUser,
+  eligibleOrganizationIds: readonly string[],
+  eventIds: readonly string[]
+): Promise<Event[]> {
+  const events = await getEventsByIdsUseCase({ eventIds })
+  const eligibleOrganizationIdSet = new Set(eligibleOrganizationIds)
+
+  return events
+    .filter((event) => canStudentViewEvent(event, user, eligibleOrganizationIdSet))
+    .map(presentEvent)
 }
 
 export async function getEventByIdService(
