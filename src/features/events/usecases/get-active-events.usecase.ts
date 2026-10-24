@@ -1,6 +1,7 @@
 import { adminDb } from '@/lib/firebase/admin'
-import { toSafeDate, toIsoString } from '@/lib/date-format'
+import { toIsoString } from '@/lib/date-format'
 import type { Event } from '../types'
+import { compareEventDatesDescending } from '../presentation'
 
 import { queryEligibleEvents, type GetEventsInput } from './query-eligible-events'
 
@@ -12,7 +13,7 @@ export async function getActiveEventsUseCase(input: GetEventsInput): Promise<Eve
     return {
       id: doc.id,
       name: data.name || 'University Event',
-      date: toIsoString(data.date) || new Date().toISOString(),
+      date: toIsoString(data.date),
       location: data.location || 'Campus',
       note: data.note,
       majorEvent: data.majorEvent ?? false,
@@ -37,5 +38,5 @@ export async function getActiveEventsUseCase(input: GetEventsInput): Promise<Eve
     }
   })
 
-  return events.sort((a, b) => (toSafeDate(b.date)?.getTime() ?? 0) - (toSafeDate(a.date)?.getTime() ?? 0))
+  return events.sort(compareEventDatesDescending)
 }

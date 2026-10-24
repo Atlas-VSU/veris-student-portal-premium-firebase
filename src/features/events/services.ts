@@ -2,19 +2,10 @@ import { resolveTermFilterService } from '@/features/terms/services'
 import { getActiveEventsUseCase } from './usecases/get-active-events.usecase'
 import { getEventByIdUseCase } from './usecases/get-event-by-id.usecase'
 import { getEventsByIdsUseCase } from './usecases/get-events-by-ids.usecase'
-import { toSafeDate } from '@/lib/date-format'
+import { presentEvent } from './presentation'
+export { determineEventStatus } from './presentation'
 import type { SessionUser } from '@/features/auth/types'
-import type { Event, EventStatus, TermFilter } from './types'
-
-export function determineEventStatus(dateMillis: number, manuallyCompleted = false): EventStatus {
-  if (manuallyCompleted) return 'completed'
-  const today = new Date().setHours(0, 0, 0, 0)
-  const eventDay = new Date(dateMillis).setHours(0, 0, 0, 0)
-
-  if (eventDay < today) return 'completed'
-  if (eventDay === today) return 'ongoing'
-  return 'upcoming'
-}
+import type { Event, TermFilter } from './types'
 
 function canStudentViewEvent(
   event: Event,
@@ -46,20 +37,6 @@ function canStudentViewEvent(
   }
 
   return false
-}
-
-function presentEvent(event: Event): Event {
-  const dateMillis = toSafeDate(event.date)?.getTime() ?? Date.now()
-  const computedStatus =
-    event.status === 'archived' || event.manuallyCompleted
-      ? event.status
-      : determineEventStatus(dateMillis, event.manuallyCompleted)
-
-  return {
-    ...event,
-    orgName: event.orgName,
-    status: computedStatus,
-  }
 }
 
 export async function getEventsService(

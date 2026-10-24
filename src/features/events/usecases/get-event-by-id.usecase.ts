@@ -21,7 +21,7 @@ export async function getEventByIdUseCase(input: GetEventByIdInput): Promise<Eve
   return {
     id: doc.id,
     name: data.name || 'University Event',
-    date: toIsoString(data.date) || new Date().toISOString(),
+    date: toIsoString(data.date),
     location: data.location || 'Campus',
     note: data.note,
     majorEvent: data.majorEvent ?? false,

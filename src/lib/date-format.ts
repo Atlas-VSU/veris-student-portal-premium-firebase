@@ -25,7 +25,8 @@ export function toSafeDate(val: unknown): Date | null {
     const obj = val as Record<string, unknown>
     const seconds = (obj._seconds ?? obj.seconds) as number | undefined
     if (typeof seconds === 'number') {
-      return new Date(seconds * 1000)
+      const d = new Date(seconds * 1000)
+      return isNaN(d.getTime()) ? null : d
     }
   }
 

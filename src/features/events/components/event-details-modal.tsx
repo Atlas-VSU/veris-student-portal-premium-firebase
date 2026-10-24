@@ -2,7 +2,7 @@
 
 import React from 'react'
 import type { Event } from '../types'
-import { formatDate } from '@/lib/date-format'
+import { formatDate, toSafeDate } from '@/lib/date-format'
 
 interface EventDetailsModalProps {
   event: Event | null
@@ -56,11 +56,11 @@ export function EventDetailsModal({ event, onClose }: EventDetailsModalProps) {
             </div>
             <div>
               <span className="text-slate-500 block mb-0.5">Status</span>
-              <span className="text-slate-200 font-medium capitalize">{event.status}</span>
+              <span className="inline-flex px-2.5 py-0.5 rounded-full bg-slate-800 text-slate-300 font-medium capitalize border border-slate-700/60">{event.status}</span>
             </div>
             <div>
               <span className="text-slate-500 block mb-0.5">Scheduled Date</span>
-              <span className="text-slate-200 font-medium">{formatDate(event.date)}</span>
+              <span className="text-slate-200 font-medium">{toSafeDate(event.date) ? formatDate(event.date) : 'Date unavailable'}</span>
             </div>
             <div>
               <span className="text-slate-500 block mb-0.5">Venue / Location</span>

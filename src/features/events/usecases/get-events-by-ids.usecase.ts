@@ -33,7 +33,7 @@ export async function getEventsByIdsUseCase(
       events.push({
         id: snapshot.id,
         name: data.name || 'University Event',
-        date: toIsoString(data.date) || new Date().toISOString(),
+        date: toIsoString(data.date),
         location: data.location || 'Campus',
         note: data.note,
         majorEvent: data.majorEvent ?? false,

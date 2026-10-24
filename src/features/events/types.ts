@@ -3,12 +3,12 @@ import type { TermFilter } from '@/features/terms/types'
 
 export type { ActionResult, TermFilter }
 
-export type EventStatus = 'upcoming' | 'ongoing' | 'completed' | 'archived'
+export type EventStatus = 'upcoming' | 'ongoing' | 'completed' | 'archived' | 'unavailable'
 
 export interface Event {
   id: string
   name: string
-  date: string
+  date: string | null
   location: string
   note?: string
   majorEvent: boolean
@@ -35,7 +35,7 @@ export interface Event {
 export interface EventSummary {
   id: string
   name: string
-  date: string
+  date: string | null
   location: string
   orgName?: string
   majorEvent: boolean

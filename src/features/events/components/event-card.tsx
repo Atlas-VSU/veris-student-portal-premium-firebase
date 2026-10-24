@@ -2,7 +2,7 @@
 
 import React from 'react'
 import type { Event } from '../types'
-import { formatDate } from '@/lib/date-format'
+import { formatDate, toSafeDate } from '@/lib/date-format'
 
 interface EventCardProps {
   event: Event
@@ -29,6 +29,12 @@ export function EventCard({ event, onSelect }: EventCardProps) {
         return (
           <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-slate-800 text-slate-400 border border-slate-700/60">
             Completed
+          </span>
+        )
+      case 'unavailable':
+        return (
+          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-slate-800 text-slate-400 border border-slate-700/60">
+            Unavailable
           </span>
         )
       case 'archived':
@@ -82,7 +88,7 @@ export function EventCard({ event, onSelect }: EventCardProps) {
             <svg className="w-4 h-4 text-slate-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
             </svg>
-            <span className="truncate">{formatDate(event.date)}</span>
+            <span className="truncate">{toSafeDate(event.date) ? formatDate(event.date) : 'Date unavailable'}</span>
           </div>
 
           <div className="flex items-center gap-2 text-slate-400">
