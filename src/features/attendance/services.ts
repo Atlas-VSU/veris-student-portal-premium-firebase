@@ -1,9 +1,10 @@
-import { getEventByIdService } from '@/features/events/services'
+import { getEventsByIdsService } from '@/features/events/services'
 import { resolveTermFilterService } from '@/features/terms/services'
 import { getMyAttendanceUseCase } from './usecases/get-my-attendance.usecase'
 import { getMyAttendanceFinesUseCase } from './usecases/get-my-attendance-fines.usecase'
 import { getAttendanceFineItemsUseCase } from './usecases/get-attendance-fine-items.usecase'
 import { toSafeDate, toIsoString } from '@/lib/date-format'
+import { mapWithConcurrency } from '@/lib/map-with-concurrency'
 import {
   calculateAttendanceStats,
   matchesTerm,
@@ -40,6 +41,8 @@ interface FineItemInfo {
   semester?: string
 }
 
+const FINE_ITEM_READ_CONCURRENCY = 5
+
 interface AttendanceServiceInput {
   userId: string
   user: SessionUser
@@ -53,10 +56,13 @@ async function getStudentAbsenceFineItems(
   filter?: TermFilter
 ): Promise<FineItemInfo[]> {
   const fineParents = await getMyAttendanceFinesUseCase({ userId, filter })
-  const itemGroups = await Promise.all(
-    fineParents
-      .filter((fine) => eligibleOrganizationIds.has(fine.orgId))
-      .map(async (fine) => {
+  const eligibleFineParents = fineParents.filter((fine) =>
+    eligibleOrganizationIds.has(fine.orgId)
+  )
+  const itemGroups = await mapWithConcurrency(
+    eligibleFineParents,
+    FINE_ITEM_READ_CONCURRENCY,
+    async (fine) => {
       const items = await getAttendanceFineItemsUseCase({ fineId: fine.id })
 
       return items.map((item) => ({
@@ -67,7 +73,7 @@ async function getStudentAbsenceFineItems(
         academicYear: fine.academicYear,
         semester: fine.semester,
       }))
-      })
+    }
   )
 
   return itemGroups.flat()
@@ -103,17 +109,12 @@ export async function getMyAttendanceHistoryService(
     if (fine.eventId) eventIds.add(fine.eventId)
   })
 
-  const eventEntries = await Promise.all(
-    [...eventIds].map(async (eventId) => {
-      const event = await getEventByIdService(
-        input.user,
-        input.eligibleOrganizationIds,
-        eventId
-      )
-      return [eventId, event] as const
-    })
+  const events = await getEventsByIdsService(
+    input.user,
+    input.eligibleOrganizationIds,
+    [...eventIds]
   )
-  const eventById = new Map(eventEntries)
+  const eventById = new Map(events.map((event) => [event.id, event]))
 
   const unifiedList: AttendanceHistoryItem[] = []
   const attendedEventIds = new Set<string>()
