@@ -57,7 +57,7 @@ function presentEvent(event: Event): Event {
 
   return {
     ...event,
-    orgName: event.orgName || 'University Organization',
+    orgName: event.orgName,
     status: computedStatus,
   }
 }
