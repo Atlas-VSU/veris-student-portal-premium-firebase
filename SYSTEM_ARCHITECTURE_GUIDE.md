@@ -634,6 +634,8 @@ At minimum, the intended portal needs indexes supporting:
 
 The repository currently has no confirmed deployed Firestore index manifest. Required indexes must be validated against actual queries before release.
 
+The events catalog additionally queries `orgId in (...)` (up to 30 unique eligible organization IDs per query) with `isDeleted == false` and optional `academicYear` and `semester` equalities. Validate all four term-filter combinations and provision any required indexes before release. Chunk queries run with concurrency capped at five; query failures propagate without an unscoped fallback. Population authorization remains enforced by the service, and merged results are sorted by date in memory.
+
 ---
 
 ## 7. Domain State Rules

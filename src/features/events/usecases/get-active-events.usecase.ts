@@ -2,24 +2,12 @@ import { adminDb } from '@/lib/firebase/admin'
 import { toSafeDate, toIsoString } from '@/lib/date-format'
 import type { Event } from '../types'
 
-interface GetEventsInput {
-  academicYear?: string
-  semester?: string
-}
+import { queryEligibleEvents, type GetEventsInput } from './query-eligible-events'
 
-export async function getActiveEventsUseCase(input?: GetEventsInput): Promise<Event[]> {
-  let query = adminDb.collection('events').where('isDeleted', '==', false)
+export async function getActiveEventsUseCase(input: GetEventsInput): Promise<Event[]> {
+  const docs = await queryEligibleEvents(adminDb, input)
 
-  if (input?.academicYear) {
-    query = query.where('academicYear', '==', input.academicYear)
-  }
-  if (input?.semester) {
-    query = query.where('semester', '==', input.semester)
-  }
-
-  const snapshot = await query.get()
-
-  const events: Event[] = snapshot.docs.map((doc) => {
+  const events: Event[] = docs.map((doc) => {
     const data = doc.data()
     return {
       id: doc.id,

@@ -70,6 +70,7 @@ export async function getEventsService(
   const resolvedFilter = await resolveTermFilterService(filter)
 
   const rawEvents = await getActiveEventsUseCase({
+    eligibleOrganizationIds,
     academicYear: resolvedFilter.academicYear,
     semester: resolvedFilter.semester,
   })
